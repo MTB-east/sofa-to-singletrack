@@ -485,7 +485,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                       {info && (
                         <div style={{ width: 5, height: 5, borderRadius: "50%", background: info.status === "skipped" ? "transparent" : dotColor[info.status], border: info.status === "skipped" ? "1px solid #5c5f5c" : "none" }} />
                       )}
-                      {hasAdHoc && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#1B8A82", opacity: 0.5 }} />}
+                      {hasAdHoc && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#FFD400" }} />}
                     </div>
                   </div>
                   {isPreviewing && info && (
@@ -508,7 +508,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#1B8A82", display: "inline-block" }} /> Done</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", border: "1px solid #5c5f5c", display: "inline-block" }} /> Skipped</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#E8792B", display: "inline-block" }} /> Upcoming</span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#1B8A82", opacity: 0.5, display: "inline-block" }} /> Extra ride</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FFD400", display: "inline-block" }} /> Extra ride</span>
       </div>
       <p style={{ fontSize: 10, color: "#5c5f5c", margin: "8px 0 0" }}>Tap or hover a session dot for a quick preview.</p>
     </div>
@@ -548,6 +548,7 @@ export default function SofaToSingletrack() {
   const [showNotifPrompt, setShowNotifPrompt] = useState(false);
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [toast, setToast] = useState("");
+  const [toastType, setToastType] = useState("info"); // "info" | "trophy"
   const [loaded, setLoaded] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -612,7 +613,7 @@ export default function SofaToSingletrack() {
   }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, stage]);
 
   useEffect(() => { if (stage === "onboarding" && nameRef.current) nameRef.current.focus(); }, [stage, step]);
-  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), 3000); return () => clearTimeout(t); }, [toast]);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), toastType === "trophy" ? 4200 : 3000); return () => clearTimeout(t); }, [toast, toastType]);
   useEffect(() => { const t = setTimeout(() => setShowSplash(false), 1600); return () => clearTimeout(t); }, []);
   useEffect(() => {
     if (!activeTimer) return;
@@ -662,17 +663,53 @@ export default function SofaToSingletrack() {
     }
   }
 
-  const awardBadge = (label) => setBadges((prev) => (prev.includes(label) ? prev : [...prev, label]));
-
-  const checkWeekBadges = (log) => {
+  // Re-checks every trophy condition against a fresh sessionLog/adHocLog snapshot
+  // (passed in directly rather than read from state, since state hasn't committed
+  // yet at the point this is called) and returns any newly-earned trophy labels.
+  // Compares against `badges` from closure (not a setState updater) so the result
+  // is available synchronously to the caller — setState updaters aren't guaranteed
+  // to run before the next line of code, only before the next render.
+  const checkAllBadges = (log, adHoc) => {
+    const candidates = [];
     weeks.forEach((w) => {
       const allLogged = w.sessions.every((_, i) => `${w.n}-${i}` in log);
       if (!allLogged) return;
-      if (w.n === 1) awardBadge("First week done");
-      if (w.n === 4) awardBadge("First month done");
-      if (w.n === 8) awardBadge("Two months done");
-      if (w.n === 12) awardBadge("Three months done");
+      if (w.n === 1) candidates.push("First week done");
+      if (w.n === 4) candidates.push("First month done");
+      if (w.n === 8) candidates.push("Two months done");
+      if (w.n === 12) candidates.push("Three months done");
     });
+
+    const hasAnyRealRide = Object.values(log).some((f) => f !== "Didn't get to it") || adHoc.length > 0;
+    if (hasAnyRealRide) candidates.push("First ride done");
+
+    const totalMins = allSessions.reduce((sum, s) => sum + (log[s.key] && log[s.key] !== "Didn't get to it" ? (sessionDurations[s.key] ?? s.session.mins) : 0), 0);
+    if (totalMins >= 300) candidates.push("5 hours ridden");
+
+    const hasOutdoorRide = allSessions.some((s) => log[s.key] && log[s.key] !== "Didn't get to it" && mode[s.key] !== "trainer");
+    if (hasOutdoorRide) candidates.push("First outdoor ride");
+
+    const engagedInSnapshot = (weekN) => {
+      const hasStructured = weeks.find((w) => w.n === weekN)?.sessions.some((_, i) => log[`${weekN}-${i}`] && log[`${weekN}-${i}`] !== "Didn't get to it");
+      const hasAdHoc = adHoc.some((r) => r.week === weekN);
+      return hasStructured || hasAdHoc;
+    };
+    for (let w = 2; w <= weeks.length; w++) {
+      if (engagedInSnapshot(w) && !engagedInSnapshot(w - 1)) {
+        candidates.push("Bounced back");
+        break;
+      }
+    }
+
+    const justAwarded = candidates.filter((label) => !badges.includes(label));
+    if (justAwarded.length > 0) {
+      setBadges((prev) => {
+        const merged = [...prev];
+        justAwarded.forEach((label) => { if (!merged.includes(label)) merged.push(label); });
+        return merged;
+      });
+    }
+    return justAwarded;
   };
 
   const chooseRace = (race) => {
@@ -702,19 +739,29 @@ export default function SofaToSingletrack() {
     setStage("checkin");
   };
 
+  const showToast = (text, type = "info") => {
+    setToastType(type);
+    setToast(text);
+  };
+
+  const trophyToastText = (justAwarded) =>
+    justAwarded.length === 1 ? `🏆 Trophy unlocked: ${justAwarded[0]}` : `🏆 ${justAwarded.length} new trophies unlocked!`;
+
   const logSession = (target, feeling, { navigate = true } = {}) => {
     const isFirstEver = Object.keys(sessionLog).length === 0;
     const newLog = { ...sessionLog, [target.key]: feeling };
     setSessionLog(newLog);
     setLastFeeling(feeling === "Didn't get to it" ? lastFeeling : feeling);
-    checkWeekBadges(newLog);
+    const justAwarded = checkAllBadges(newLog, adHocLog);
     if (isFirstEver && !notifAsked) setShowNotifPrompt(true);
 
-    if (!navigate) {
-      setToast(feeling === "Didn't get to it" ? "No worries — logged as skipped." : "Session logged.");
-      return;
+    if (justAwarded.length > 0) {
+      showToast(trophyToastText(justAwarded), "trophy");
+    } else if (!navigate) {
+      showToast(feeling === "Didn't get to it" ? "No worries — logged as skipped." : "Session logged.");
     }
 
+    if (!navigate) return;
     setCoachNote(getCoachNote(target, feeling));
   };
 
@@ -730,8 +777,12 @@ export default function SofaToSingletrack() {
     if (!activeTimer) return;
     const elapsedMins = Math.max(1, Math.round((Date.now() - activeTimer.startedAt) / 60000));
     const key = activeTimer.key;
+    const priorBest = Math.max(0, ...Object.values(sessionDurations));
     setSessionDurations((prev) => ({ ...prev, [key]: elapsedMins }));
     setActiveTimer(null);
+    if (priorBest > 0 && elapsedMins > priorBest) {
+      showToast(`⭐ New personal best! Longest ride yet: ${formatMinutes(elapsedMins)}`, "trophy");
+    }
     const target = allSessions.find((s) => s.key === key);
     if (target) openCheckin(target);
   };
@@ -744,8 +795,10 @@ export default function SofaToSingletrack() {
   };
 
   const logAdHocRide = () => {
-    setAdHocLog((prev) => [...prev, { week: currentWeekN, at: Date.now() }]);
-    setToast("Nice one — ride logged.");
+    const newAdHocLog = [...adHocLog, { week: currentWeekN, at: Date.now() }];
+    setAdHocLog(newAdHocLog);
+    const justAwarded = checkAllBadges(sessionLog, newAdHocLog);
+    showToast(justAwarded.length > 0 ? trophyToastText(justAwarded) : "Nice one — ride logged.", justAwarded.length > 0 ? "trophy" : "info");
   };
 
   const dismissNotifPrompt = (enable) => {
@@ -784,6 +837,8 @@ export default function SofaToSingletrack() {
         @import url('https://fonts.googleapis.com/css2?family=Fjalla+One&family=Inter:wght@400;500;600;700&display=swap');
         .display { font-family: 'Fjalla One', sans-serif; letter-spacing: 0.04em; }
         button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #E8792B; outline-offset: 2px; }
+        @keyframes toastPop { 0% { transform: translateX(-50%) scale(0.85); opacity: 0; } 60% { transform: translateX(-50%) scale(1.06); opacity: 1; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+        .toast-pop { animation: toastPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
       `}</style>
       {showSplash && <SplashScreen />}
@@ -792,7 +847,16 @@ export default function SofaToSingletrack() {
         <AppHeader />
 
         {toast && (
-          <div style={{ position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", background: "#1B8A82", color: "#fff", padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600, zIndex: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.4)" }}>
+          <div
+            className={toastType === "trophy" ? "toast-pop" : undefined}
+            style={{
+              position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)",
+              background: toastType === "trophy" ? "#E8792B" : "#1B8A82", color: "#fff",
+              padding: toastType === "trophy" ? "10px 20px" : "8px 16px", borderRadius: 20,
+              fontSize: toastType === "trophy" ? 14 : 13, fontWeight: 700, zIndex: 10,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.5)", maxWidth: "88vw", textAlign: "center",
+            }}
+          >
             {toast}
           </div>
         )}
