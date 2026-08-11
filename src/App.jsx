@@ -181,10 +181,28 @@ function TopoBackground() {
   );
 }
 
+function InstallPrompt({ deferredPrompt, onInstall, isIOS, isStandalone }) {
+  if (isStandalone) return null;
+  if (!deferredPrompt && !isIOS) return null;
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "1px solid #2b2b2b", display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Install this app</div>
+        <div style={{ fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>
+          {isIOS ? <>Tap the Share icon, then "Add to Home Screen".</> : "Add it to your home screen for a full-screen, offline-friendly experience."}
+        </div>
+      </div>
+      {deferredPrompt && (
+        <button onClick={onInstall} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>Install</button>
+      )}
+    </div>
+  );
+}
+
 function AppHeader() {
   return (
-    <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 20px", borderBottom: "1px solid #1c1c1c" }}>
-      <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#E8792B" }} />
+    <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 20px", borderBottom: "1px solid #1c1c1c" }}>
+      <img src="/brand/header-mark.png" alt="" width={24} height={24} style={{ display: "block" }} />
       <span className="display" style={{ fontSize: 13, letterSpacing: "0.08em", color: "#F4F3EF" }}>SOFA TO SINGLETRACK</span>
       <span style={{ fontSize: 10, color: "#B9BDB8", fontWeight: 600 }}>· MTB EAST</span>
     </div>
@@ -192,13 +210,9 @@ function AppHeader() {
 }
 
 function SplashScreen() {
-  // Placeholder mark — swap for the real MTB East mole/beaver logo asset when available.
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-      <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#161616", border: "2px solid #1B8A82", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-        <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#E8792B" }} />
-      </div>
-      <div className="display" style={{ fontSize: 15, letterSpacing: "0.1em", color: "#B9BDB8", marginBottom: 6 }}>MTB EAST</div>
+      <img src="/brand/logo-full.png" alt="MTB East" width={160} height={160} style={{ marginBottom: 20 }} />
       <h1 className="display" style={{ fontSize: 32, lineHeight: 1.1, margin: 0, color: "#E8792B", textAlign: "center" }}>SOFA TO<br />SINGLETRACK</h1>
     </div>
   );
@@ -447,7 +461,7 @@ export default function SofaToSingletrack() {
   const [coachNote, setCoachNote] = useState("");
   const [welcomeNote, setWelcomeNote] = useState("");
   const [tipIndex, setTipIndex] = useState(0);
-  const [programStart] = useState(new Date());
+  const [programStart, setProgramStart] = useState(new Date());
   const [mode, setMode] = useState({});
   const [bikeCheckDone, setBikeCheckDone] = useState(false);
   const [fitnessConfirmed, setFitnessConfirmed] = useState(false);
@@ -463,7 +477,32 @@ export default function SofaToSingletrack() {
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isStandalone, setIsStandalone] = useState(false);
   const nameRef = useRef(null);
+  const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  useEffect(() => {
+    const onBeforeInstall = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    const onInstalled = () => setDeferredPrompt(null);
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    setIsStandalone(window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    setDeferredPrompt(null);
+  };
 
   useEffect(() => {
     try {
@@ -479,6 +518,7 @@ export default function SofaToSingletrack() {
         if (typeof saved.notifEnabled === "boolean") setNotifEnabled(saved.notifEnabled);
         if (saved.reminderTime) setReminderTime(saved.reminderTime);
         if (typeof saved.lastFeeling !== "undefined") setLastFeeling(saved.lastFeeling);
+        if (saved.programStart) setProgramStart(new Date(saved.programStart));
         if (saved.stage && saved.stage !== "checkin") setStage(saved.stage);
       }
     } catch (e) {
@@ -490,12 +530,12 @@ export default function SofaToSingletrack() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, stage });
+      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), stage });
       localStorage.setItem(STORAGE_KEY, payload);
     } catch (e) {
       // storage unavailable (private browsing, quota) — progress just won't persist
     }
-  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, stage]);
+  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, stage]);
 
   useEffect(() => { if (stage === "onboarding" && nameRef.current) nameRef.current.focus(); }, [stage, step]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), 3000); return () => clearTimeout(t); }, [toast]);
@@ -661,6 +701,7 @@ export default function SofaToSingletrack() {
             </div>
           </div>
           <button onClick={() => setStage("onboarding")} style={navBtn}>Start your programme</button>
+          <InstallPrompt deferredPrompt={deferredPrompt} onInstall={handleInstallClick} isIOS={isIOS} isStandalone={isStandalone} />
           <p style={{ fontSize: 11.5, color: "#7A7E79", lineHeight: 1.5, marginTop: 18 }}>
             Training and fuelling notes are general guidance from a fixed content library, not personalised medical, dietetic or coaching advice.
             Mountain biking carries a risk of injury — ride within your ability, and speak to a GP before starting if you have any health concerns.

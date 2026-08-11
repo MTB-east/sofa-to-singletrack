@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg"],
+      includeAssets: ["favicon.png", "brand/logo-full.png", "brand/header-mark.png"],
       manifest: {
         name: "Sofa to Singletrack",
         short_name: "S2S",
