@@ -1230,8 +1230,8 @@ export default function SofaToSingletrack() {
                   {selectedRace ? <>You could line up at <strong>{selectedRace.name}</strong>, {selectedRace.venue}.</> : "There's a full MTB East fixture list you could dip into whenever you're ready."}
                   {" "}You don't need to compete to come along — plenty of riders spectate at a race first.
                 </p>
-                <button style={{ ...navBtn, marginBottom: 8 }}>See the race calendar</button>
-                <button style={{ background: "none", border: "1px solid #E8792B", color: "#E8792B", borderRadius: 10, width: "100%", padding: "12px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Talk to a coach about racing</button>
+                <a href="https://www.mtbeast.co.uk" target="_blank" rel="noopener noreferrer" style={{ ...navBtn, marginBottom: 8, display: "block", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>See the race calendar</a>
+                <button onClick={() => setStage("coachQA")} style={{ background: "none", border: "1px solid #E8792B", color: "#E8792B", borderRadius: 10, width: "100%", padding: "12px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Talk to a coach about racing</button>
               </div>
               <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", border: "1px solid #2b2b2b" }}>
                 <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Just want to keep riding?</div>
@@ -1291,7 +1291,7 @@ export default function SofaToSingletrack() {
 
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <button onClick={() => setStage("coachQA")} style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>💬 Contact a coach</button>
-            <button style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>📅 MTB East race calendar</button>
+            <a href="https://www.mtbeast.co.uk" target="_blank" rel="noopener noreferrer" style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, textDecoration: "none", textAlign: "center", boxSizing: "border-box" }}>📅 MTB East race calendar</a>
           </div>
 
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
