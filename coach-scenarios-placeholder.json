@@ -1,0 +1,45 @@
+{
+  "_notice": "PLACEHOLDER CONTENT — written to unblock the app build. Every value here should be replaced with the MTB East coach's actual answers from the coach input form once he's completed it. Structure matches that form exactly (Sections A–D) so swapping content in is a like-for-like replacement, not a rebuild.",
+
+  "welcome": "Welcome aboard, {name} — your first session, {sessionName}, is a gentle one on purpose. No pressure, just get a feel for the bike.",
+
+  "checkins": {
+    "early": {
+      "_notice": "Weeks 1–3. Deliberately unconditional — nothing about the plan changes yet, whatever the rider says.",
+      "Easier than expected": "Good sign — it means the base fitness is there. Don't jump ahead of the plan yet though; the next few weeks build for a reason. Just enjoy feeling strong and stick with what's coming next.",
+      "About right": "That's exactly where we want you in these first few weeks. Keep showing up at this effort and the fitness will build itself — nothing to change.",
+      "Tougher than expected": "Totally normal this early on — your body's adapting to something new. Don't chase the plan's pace if it doesn't feel right; slow it down, and it'll click over the next couple of sessions.",
+      "Had to stop early": "No drama at all — plenty of people need a session or two to find their legs. Have a look at your bike setup (saddle height, tyre pressure) in case that's part of it, and go into the next one without expecting anything.",
+      "Didn't get to it": "Completely fine — the first few weeks are about building the habit, not hitting a perfect record. Just pick back up with the next one."
+    },
+    "later": {
+      "_notice": "Week 4 onwards. This is where real adjustment kicks in.",
+      "Easier than expected": "Nice — that's a sign to push a little harder next time out. Try holding a slightly higher effort on your next session and see how that feels.",
+      "About right": "That's the effort we want to see this deep into the plan — keep it right there for your next session.",
+      "Tougher than expected": "Worth backing off slightly on your next session — ease the pace or shorten it a touch, and don't be afraid to walk sections that aren't clicking.",
+      "Had to stop early": "If that's happened more than once recently, it's worth taking your next session properly easy — sometimes the body just needs a lighter week. One easier session won't undo your progress.",
+      "Didn't get to it": "No guilt needed — life gets in the way. Just get back on for the next one whenever you can."
+    }
+  },
+
+  "situations": {
+    "descents": "Look through the corner or the section ahead, not down at your front wheel — where your eyes go, the bike tends to follow. Start slower than feels necessary; speed comes with confidence, not the other way round.",
+    "joints": "A bit of new-activity discomfort in the first couple of weeks isn't unusual, but anything sharp, one-sided, or that doesn't ease off deserves a proper check from a physio or GP rather than pushing through it.",
+    "climbs": "Everyone's got a different engine — the point isn't to keep up, it's to ride your own pace and get to the top however long it takes. Sit slightly further back and keep pedalling smoothly rather than mashing the gear.",
+    "motivation": "This happens to everyone at some point. Don't try to catch up on missed sessions — just get back on for the next one on the plan and let the momentum build again naturally.",
+    "equipment": "Most early wobbles come down to saddle height (should let your leg almost straighten at the bottom of the pedal stroke) or tyre pressure (softer than road bikes, but not so soft it feels vague) — worth a quick check before assuming it's you.",
+    "weather": "Riding in the wet or wind is a genuinely useful skill to build, but if it's unsafe (ice, high winds, thunder), swap to the indoor/trainer option for that session rather than risk it.",
+    "comparison": "Everyone on this plan started from a different point — the only comparison that matters is you against where you were a few weeks ago."
+  },
+
+  "raceWeek": {
+    "taper": "Feeling like you haven't done enough this week is completely normal — the whole point of a taper is doing less so your legs are fresh, not more. Trust the rest.",
+    "dayBefore": "Get your kit and bike sorted the night before so the morning is calm. Eat a meal you know agrees with you, and try to get a decent night's sleep — nerves are normal and won't stop you riding well.",
+    "raceMorning": "Nerves before a first race are completely normal, even for people who've raced for years. Remember the goal today isn't a result — it's finishing your own race, at your own pace. Enjoy it."
+  },
+
+  "voice": {
+    "always": "Keep it plain, practical and specific — real advice you'd actually say trackside, not generic hype. End on something forward-looking (the next session), not just a pat on the back.",
+    "avoid": "No exclamation-mark enthusiasm, no fitness-app clichés (\"crush it\", \"you've got this\"), no medical claims."
+  }
+}
