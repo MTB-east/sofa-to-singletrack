@@ -368,6 +368,35 @@ function SpeedoGauge({ pct }) {
   );
 }
 
+const CONFETTI_COLORS = ["#E8792B", "#1B8A82", "#F4F3EF", "#FFD400"];
+
+function Confetti() {
+  const pieces = Array.from({ length: 36 }).map((_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 0.3,
+    duration: 1.6 + Math.random() * 0.9,
+    rotate: Math.round(Math.random() * 360),
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    size: 6 + Math.random() * 6,
+  }));
+  return (
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 15, overflow: "hidden" }} aria-hidden="true">
+      {pieces.map((p) => (
+        <div
+          key={p.id}
+          style={{
+            position: "absolute", top: -20, left: `${p.left}%`, width: p.size, height: p.size * 0.4,
+            background: p.color, opacity: 0.9, borderRadius: 2,
+            animation: `confettiFall ${p.duration}s ease-in ${p.delay}s forwards`,
+            transform: `rotate(${p.rotate}deg)`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function TrophyCase({ badges }) {
   return (
     <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
@@ -519,6 +548,15 @@ const monthNavBtn = { background: "none", border: "1px solid #2b2b2b", color: "#
 
 const FEELINGS = ["Easier than expected", "About right", "Tougher than expected", "Had to stop early"];
 
+const QA_TOPICS = [
+  "Bike handling skills",
+  "Building fitness or endurance",
+  "Local trail & route ideas",
+  "Group rides / meeting other riders",
+  "Race or event support",
+  "Something else",
+];
+
 const STORAGE_KEY = "sofaToSingletrack:progress";
 
 export default function SofaToSingletrack() {
@@ -549,7 +587,11 @@ export default function SofaToSingletrack() {
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [toastType, setToastType] = useState("info"); // "info" | "trophy"
+  const [confettiKey, setConfettiKey] = useState(0);
+  const [showConfetti, setShowConfetti] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [qaTopics, setQaTopics] = useState([]);
+  const [qaNotes, setQaNotes] = useState("");
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const nameRef = useRef(null);
@@ -744,8 +786,19 @@ export default function SofaToSingletrack() {
     setToast(text);
   };
 
+  const triggerConfetti = () => {
+    setConfettiKey((k) => k + 1);
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 2600);
+  };
+
   const trophyToastText = (justAwarded) =>
     justAwarded.length === 1 ? `🏆 Trophy unlocked: ${justAwarded[0]}` : `🏆 ${justAwarded.length} new trophies unlocked!`;
+
+  const celebrateTrophies = (justAwarded) => {
+    showToast(trophyToastText(justAwarded), "trophy");
+    triggerConfetti();
+  };
 
   const logSession = (target, feeling, { navigate = true } = {}) => {
     const isFirstEver = Object.keys(sessionLog).length === 0;
@@ -756,7 +809,7 @@ export default function SofaToSingletrack() {
     if (isFirstEver && !notifAsked) setShowNotifPrompt(true);
 
     if (justAwarded.length > 0) {
-      showToast(trophyToastText(justAwarded), "trophy");
+      celebrateTrophies(justAwarded);
     } else if (!navigate) {
       showToast(feeling === "Didn't get to it" ? "No worries — logged as skipped." : "Session logged.");
     }
@@ -794,11 +847,33 @@ export default function SofaToSingletrack() {
     setStage("dashboard");
   };
 
+  const toggleQaTopic = (topic) => {
+    setQaTopics((prev) => (prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic]));
+  };
+
+  const sendQaFeedback = () => {
+    const lines = [
+      `Rider: ${profile.name || "not given"}`,
+      `Interested in: ${qaTopics.length ? qaTopics.join(", ") : "not specified"}`,
+      qaNotes.trim() ? `Notes: ${qaNotes.trim()}` : null,
+    ].filter(Boolean).join("\n");
+    const mailto = `mailto:info@mtbeast.co.uk?subject=${encodeURIComponent("Sofa to Singletrack — what I'd like from MTB East")}&body=${encodeURIComponent(lines)}`;
+    window.location.href = mailto;
+    setQaTopics([]);
+    setQaNotes("");
+    setStage("dashboard");
+    showToast("Thanks — opening your email to send this to the coaches.");
+  };
+
   const logAdHocRide = () => {
     const newAdHocLog = [...adHocLog, { week: currentWeekN, at: Date.now() }];
     setAdHocLog(newAdHocLog);
     const justAwarded = checkAllBadges(sessionLog, newAdHocLog);
-    showToast(justAwarded.length > 0 ? trophyToastText(justAwarded) : "Nice one — ride logged.", justAwarded.length > 0 ? "trophy" : "info");
+    if (justAwarded.length > 0) {
+      celebrateTrophies(justAwarded);
+    } else {
+      showToast("Nice one — ride logged.");
+    }
   };
 
   const dismissNotifPrompt = (enable) => {
@@ -839,12 +914,15 @@ export default function SofaToSingletrack() {
         button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #E8792B; outline-offset: 2px; }
         @keyframes toastPop { 0% { transform: translateX(-50%) scale(0.85); opacity: 0; } 60% { transform: translateX(-50%) scale(1.06); opacity: 1; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
         .toast-pop { animation: toastPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        @keyframes confettiFall { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(600deg); opacity: 0; } }
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
       `}</style>
       {showSplash && <SplashScreen />}
       <TopoBackground />
       <div style={{ position: "relative", zIndex: 1 }}>
         <AppHeader />
+
+        {showConfetti && <Confetti key={confettiKey} />}
 
         {toast && (
           <div
@@ -1019,6 +1097,64 @@ export default function SofaToSingletrack() {
       {stage === "dashboard" && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "28px 20px 48px" }}>
 
+          {!programmeComplete && nextSession && (
+            <div style={{ background: "#E8792B", borderRadius: 14, padding: "20px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#14171A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Next up — {nextSession.session.day}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#14171A" }}>{nextSession.session.name}</div>
+                {MICRO_EXPLAINERS[nextSession.session.name] && (
+                  <button onClick={() => setExplainerOpen((v) => !v)} aria-label="Why this session?" style={{ width: 20, height: 20, borderRadius: "50%", background: "none", border: "1px solid rgba(20,23,26,0.5)", color: "#14171A", fontSize: 12, fontWeight: 700, cursor: "pointer", lineHeight: "18px", padding: 0 }}>?</button>
+                )}
+              </div>
+              {explainerOpen && MICRO_EXPLAINERS[nextSession.session.name] && (
+                <p style={{ fontSize: 12.5, color: "#B9BDB8", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "0 0 10px", lineHeight: 1.4 }}>
+                  {MICRO_EXPLAINERS[nextSession.session.name]}
+                </p>
+              )}
+              {adjustTag(lastFeeling) && (
+                <div style={{ display: "inline-block", background: "#0d0d0d", color: "#1B8A82", fontSize: 11, fontWeight: 600, borderRadius: 6, padding: "3px 8px", marginBottom: 8 }}>
+                  {adjustTag(lastFeeling)}
+                </div>
+              )}
+              <p style={{ fontSize: 14, color: "#14171A", lineHeight: 1.5, margin: "4px 0 12px" }}>
+                {mode[nextSession.key] === "trainer" && nextSession.session.trainerAlt ? nextSession.session.trainerAlt : nextSession.session.detail}
+              </p>
+              {nextSession.session.trainerAlt && (
+                <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                  {["outdoor", "trainer"].map((m) => (
+                    <button key={m} onClick={() => setMode({ ...mode, [nextSession.key]: m })}
+                      style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 10px", borderRadius: 5, border: "1px solid " + ((mode[nextSession.key] || "outdoor") === m ? "#1B8A82" : "#2b2b2b"), background: (mode[nextSession.key] || "outdoor") === m ? "#1B8A82" : "#0d0d0d", color: (mode[nextSession.key] || "outdoor") === m ? "#fff" : "#B9BDB8", cursor: "pointer" }}>
+                      {m === "outdoor" ? "Outdoor / Trail" : "Indoor / Gym or trainer bike"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#0d0d0d", borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: "1px dashed #2b2b2b" }}>
+                <span style={{ fontSize: 18 }}>🎥</span>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Video demo — coming soon</div>
+                  <div style={{ fontSize: 11, color: "#7A7E79" }}>Real footage from your coach will go here</div>
+                </div>
+              </div>
+              {activeTimer && activeTimer.key === nextSession.key ? (
+                <div style={{ background: "#0d0d0d", borderRadius: 10, padding: "16px", marginBottom: 12, textAlign: "center", border: "1px solid #22C55E" }}>
+                  <div className="display" style={{ fontSize: 32, color: "#F4F3EF", marginBottom: 10 }}>{formatElapsed(nowTick - activeTimer.startedAt)}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
+                    <button onClick={cancelRideTimer} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => startRideTimer(nextSession)} style={{ ...navBtn, background: "#22C55E", color: "#fff" }}>▶ Start ride timer</button>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => openCheckin(nextSession)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Log this session</button>
+                <button onClick={() => downloadSessionICS(nextSession.session, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid rgba(20,23,26,0.4)", color: "#14171A", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>+ Cal</button>
+                <button onClick={() => quickSkip(nextSession)} style={{ background: "none", border: "1px solid rgba(20,23,26,0.4)", color: "#14171A", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Skip</button>
+              </div>
+            </div>
+          )}
+
           <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#1B8A82", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
               Week {currentWeekN} of {weeks.length}
@@ -1073,62 +1209,6 @@ export default function SofaToSingletrack() {
             </div>
           ) : (
             <div>
-              <div style={{ background: "#161616", borderRadius: 14, padding: "20px", marginBottom: 14, border: "2px solid #E8792B" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Next up — {nextSession.session.day}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <div style={{ fontSize: 20, fontWeight: 700 }}>{nextSession.session.name}</div>
-                  {MICRO_EXPLAINERS[nextSession.session.name] && (
-                    <button onClick={() => setExplainerOpen((v) => !v)} aria-label="Why this session?" style={{ width: 20, height: 20, borderRadius: "50%", background: "none", border: "1px solid #B9BDB8", color: "#B9BDB8", fontSize: 12, fontWeight: 700, cursor: "pointer", lineHeight: "18px", padding: 0 }}>?</button>
-                  )}
-                </div>
-                {explainerOpen && MICRO_EXPLAINERS[nextSession.session.name] && (
-                  <p style={{ fontSize: 12.5, color: "#B9BDB8", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "0 0 10px", lineHeight: 1.4 }}>
-                    {MICRO_EXPLAINERS[nextSession.session.name]}
-                  </p>
-                )}
-                {adjustTag(lastFeeling) && (
-                  <div style={{ display: "inline-block", background: "#0d0d0d", color: "#1B8A82", fontSize: 11, fontWeight: 600, borderRadius: 6, padding: "3px 8px", marginBottom: 8 }}>
-                    {adjustTag(lastFeeling)}
-                  </div>
-                )}
-                <p style={{ fontSize: 14, color: "#F4F3EF", lineHeight: 1.5, margin: "4px 0 12px" }}>
-                  {mode[nextSession.key] === "trainer" && nextSession.session.trainerAlt ? nextSession.session.trainerAlt : nextSession.session.detail}
-                </p>
-                {nextSession.session.trainerAlt && (
-                  <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                    {["outdoor", "trainer"].map((m) => (
-                      <button key={m} onClick={() => setMode({ ...mode, [nextSession.key]: m })}
-                        style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 10px", borderRadius: 5, border: "1px solid " + ((mode[nextSession.key] || "outdoor") === m ? "#1B8A82" : "#2b2b2b"), background: (mode[nextSession.key] || "outdoor") === m ? "#1B8A82" : "#0d0d0d", color: (mode[nextSession.key] || "outdoor") === m ? "#fff" : "#B9BDB8", cursor: "pointer" }}>
-                        {m === "outdoor" ? "Outdoor / Trail" : "Indoor / Gym or trainer bike"}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#0d0d0d", borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: "1px dashed #2b2b2b" }}>
-                  <span style={{ fontSize: 18 }}>🎥</span>
-                  <div>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Video demo — coming soon</div>
-                    <div style={{ fontSize: 11, color: "#7A7E79" }}>Real footage from your coach will go here</div>
-                  </div>
-                </div>
-                {activeTimer && activeTimer.key === nextSession.key ? (
-                  <div style={{ background: "#0d0d0d", borderRadius: 10, padding: "16px", marginBottom: 12, textAlign: "center", border: "1px solid #1B8A82" }}>
-                    <div className="display" style={{ fontSize: 32, color: "#F4F3EF", marginBottom: 10 }}>{formatElapsed(nowTick - activeTimer.startedAt)}</div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
-                      <button onClick={cancelRideTimer} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button onClick={() => startRideTimer(nextSession)} style={{ ...navBtn, background: "#E8792B" }}>▶ Start ride timer</button>
-                )}
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => openCheckin(nextSession)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Log this session</button>
-                  <button onClick={() => downloadSessionICS(nextSession.session, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>+ Cal</button>
-                  <button onClick={() => quickSkip(nextSession)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Skip</button>
-                </div>
-              </div>
-
               {upcoming.length > 0 && (
                 <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Coming up</div>
@@ -1175,7 +1255,7 @@ export default function SofaToSingletrack() {
           )}
 
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <button style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>💬 Chat with a coach</button>
+            <button onClick={() => setStage("coachQA")} style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>💬 Tell us what you need</button>
             <button style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>📅 MTB East race calendar</button>
           </div>
 
@@ -1233,6 +1313,36 @@ export default function SofaToSingletrack() {
               <button onClick={backToDashboard} style={navBtn}>Back to home</button>
             </div>
           )}
+        </div>
+      )}
+
+      {stage === "coachQA" && (
+        <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px" }}>
+          <div className="display" style={{ fontSize: 12, color: "#1B8A82", marginBottom: 8 }}>TELL US WHAT YOU NEED</div>
+          <h2 className="display" style={{ fontSize: 24, margin: "0 0 8px", color: "#E8792B" }}>WHAT WOULD HELP YOU MOST?</h2>
+          <p style={{ fontSize: 13.5, color: "#B9BDB8", lineHeight: 1.5, marginBottom: 20 }}>
+            This isn't live chat — it opens an email to the coaches with your answers, so we can find out what riders actually want from us.
+          </p>
+
+          <label style={{ display: "block", fontWeight: 600, marginBottom: 10 }}>What would you like more support with?</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+            {QA_TOPICS.map((topic) => {
+              const selected = qaTopics.includes(topic);
+              return (
+                <button key={topic} onClick={() => toggleQaTopic(topic)}
+                  style={{ padding: "10px 14px", borderRadius: 8, border: "1.5px solid " + (selected ? "#E8792B" : "#2b2b2b"), background: selected ? "#E8792B" : "#161616", color: selected ? "#14171A" : "#F4F3EF", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+                  {topic}
+                </button>
+              );
+            })}
+          </div>
+
+          <label style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>Anything else you'd like to tell us? (optional)</label>
+          <textarea value={qaNotes} onChange={(e) => setQaNotes(e.target.value)} rows={4} placeholder="What's stopping you riding more, or what would make this easier?"
+            style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+
+          <button onClick={sendQaFeedback} style={navBtn}>Send to the coaches</button>
+          <button onClick={() => setStage("dashboard")} style={backBtn}>Back</button>
         </div>
       )}
       </div>
