@@ -691,6 +691,14 @@ export default function SofaToSingletrack() {
   const completionPct = allSessions.length ? Math.round((structuredDone / allSessions.length) * 100) : 0;
   const totalMinutesRidden = allSessions.reduce((sum, s) => sum + (sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it" ? (sessionDurations[s.key] ?? s.session.mins) : 0), 0);
 
+  // Recap of the week just gone, shown on the dashboard — only surfaced when
+  // there's something to report, never to call out an empty week.
+  const lastWeekN = currentWeekN - 1;
+  const lastWeekStructured = allSessions.filter((s) => s.weekN === lastWeekN && sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it");
+  const lastWeekAdHocCount = adHocLog.filter((r) => r.week === lastWeekN).length;
+  const lastWeekRideCount = lastWeekStructured.length + lastWeekAdHocCount;
+  const lastWeekMinutes = lastWeekStructured.reduce((sum, s) => sum + (sessionDurations[s.key] ?? s.session.mins), 0);
+
   // Longest run of consecutive engaged weeks across the whole programme so far —
   // distinct from streakWeeks above, which only counts the current run.
   let longestStreakWeeks = 0;
@@ -797,6 +805,7 @@ export default function SofaToSingletrack() {
   const celebrateTrophies = (justAwarded) => {
     showToast(trophyToastText(justAwarded), "trophy");
     triggerConfetti();
+    if (navigator.vibrate) navigator.vibrate([80, 40, 80]); // Android only — iOS Safari has no Vibration API
   };
 
   const logSession = (target, feeling, { navigate = true } = {}) => {
@@ -862,6 +871,24 @@ export default function SofaToSingletrack() {
     setQaNotes("");
     setStage("dashboard");
     showToast("Thanks — opening your email to send this to the coaches.");
+  };
+
+  const handleShare = async () => {
+    const shareData = {
+      title: "Sofa to Singletrack",
+      text: "I'm using Sofa to Singletrack, an MTB East programme to get riding regularly — thought you might like it too.",
+      url: window.location.origin,
+    };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch (e) { /* user cancelled the share sheet */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareData.url);
+      showToast("Link copied — paste it to share!");
+    } catch (e) {
+      showToast(`Share this link: ${shareData.url}`);
+    }
   };
 
   const logAdHocRide = () => {
@@ -1165,6 +1192,11 @@ export default function SofaToSingletrack() {
             <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.5, color: "#F4F3EF" }}>
               {welcomeNote || `Nice and steady, ${profile.name || "rider"} — every session counts.`}
             </p>
+            {lastWeekRideCount > 0 && (
+              <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "#1B8A82", fontWeight: 600 }}>
+                Last week: {lastWeekRideCount} ride{lastWeekRideCount === 1 ? "" : "s"} · {formatMinutes(lastWeekMinutes)} ridden
+              </p>
+            )}
           </div>
 
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
@@ -1270,7 +1302,9 @@ export default function SofaToSingletrack() {
 
           <FAQSection />
 
-          <a href="mailto:info@mtbeast.co.uk?subject=Sofa%20to%20Singletrack%20feedback" style={{ display: "block", textAlign: "center", background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, textDecoration: "none", marginTop: 16 }}>💡 Suggest a feature / report a bug</a>
+          <button onClick={handleShare} style={{ display: "block", width: "100%", textAlign: "center", background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", marginTop: 16 }}>📤 Know someone who'd like this? Share it</button>
+
+          <a href="mailto:info@mtbeast.co.uk?subject=Sofa%20to%20Singletrack%20feedback" style={{ display: "block", textAlign: "center", background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, textDecoration: "none", marginTop: 10 }}>💡 Suggest a feature / report a bug</a>
         </div>
       )}
 
