@@ -550,11 +550,9 @@ const FEELINGS = ["Easier than expected", "About right", "Tougher than expected"
 
 const QA_TOPICS = [
   "Bike handling skills",
-  "Building fitness or endurance",
-  "Local trail & route ideas",
-  "Group rides / meeting other riders",
-  "Race or event support",
-  "1-to-1 or group coaching",
+  "Building fitness",
+  "1 to 1 coaching",
+  "Join an organised skills session",
   "Something else",
 ];
 
@@ -1124,7 +1122,7 @@ export default function SofaToSingletrack() {
                 <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
                   {["outdoor", "trainer"].map((m) => {
                     const active = (mode[nextSession.key] || "outdoor") === m;
-                    const activeColor = m === "outdoor" ? "rgb(162, 59, 60)" : "#1B8A82";
+                    const activeColor = m === "outdoor" ? "#E8792B" : "#1B8A82";
                     return (
                       <button key={m} onClick={() => setMode({ ...mode, [nextSession.key]: m })}
                         style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 10px", borderRadius: 5, border: "1px solid " + (active ? activeColor : "#2b2b2b"), background: active ? activeColor : "#0d0d0d", color: active ? "#fff" : "#B9BDB8", cursor: "pointer" }}>
@@ -1330,7 +1328,7 @@ export default function SofaToSingletrack() {
           </p>
           <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
             <p style={{ margin: 0, fontSize: 12.5, color: "#B9BDB8", lineHeight: 1.5 }}>
-              General guidance like this is free. Structured coaching — 1-to-1 or in a group — is available too, but those sessions are chargeable. Tell us what you're after below and we'll get back to you with details.
+              This form is free to use. All coaching — 1-to-1 or an organised skills session — is a chargeable service. Tell us what you're after below and we'll get back to you with details.
             </p>
           </div>
 
