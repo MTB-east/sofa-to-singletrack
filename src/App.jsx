@@ -1290,7 +1290,7 @@ export default function SofaToSingletrack() {
           )}
 
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <button onClick={() => setStage("coachQA")} style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>💬 Tell us what you need</button>
+            <button onClick={() => setStage("coachQA")} style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>💬 Contact a coach</button>
             <button style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>📅 MTB East race calendar</button>
           </div>
 
@@ -1355,7 +1355,7 @@ export default function SofaToSingletrack() {
 
       {stage === "coachQA" && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px" }}>
-          <div className="display" style={{ fontSize: 12, color: "#1B8A82", marginBottom: 8 }}>TELL US WHAT YOU NEED</div>
+          <div className="display" style={{ fontSize: 12, color: "#1B8A82", marginBottom: 8 }}>CONTACT A COACH</div>
           <h2 className="display" style={{ fontSize: 24, margin: "0 0 8px", color: "#E8792B" }}>WHAT WOULD HELP YOU MOST?</h2>
           <p style={{ fontSize: 13.5, color: "#B9BDB8", lineHeight: 1.5, marginBottom: 14 }}>
             This isn't live chat — it opens an email from your own address to the coaches, so they can reply directly and we can find out what riders actually want from us.
