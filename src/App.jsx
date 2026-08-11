@@ -219,15 +219,25 @@ function SplashScreen() {
 }
 
 const FAQS = [
-  { q: "I don't have a mountain bike — can I still start?", a: "Yes. Any bike you can ride safely off a smooth path on is fine to begin with. You don't need mountain bike specific kit for the early weeks." },
-  { q: "What if a session feels too hard or too easy?", a: "Log it honestly — the coach note adjusts your next session based on how it felt. There's no wrong answer, and nothing bad happens if a session is tough." },
-  { q: "What happens if I miss a session?", a: "Nothing bad. Tap skip and carry on to the next one. Missing the odd session is completely normal and won't reset your progress." },
-  { q: "Do I need to be fit already?", a: "No — the whole point of the programme is to build fitness gradually from wherever you're starting. Early sessions are deliberately gentle." },
-  { q: "Is this a race training plan?", a: "No. It's a plan to get you riding regularly. Racing is offered as an optional next step at the end, never a requirement." },
-  { q: "What if I don't want to race at the end?", a: "That's completely fine — plenty of riders use the programme just to build a lasting cycling habit. You'll get other suggestions instead, like local routes and clubs." },
-  { q: "What kit do I actually need?", a: "A helmet is the one non-negotiable. Comfortable clothing you can move in and a water bottle cover the rest for now." },
-  { q: "Can I do the sessions on a turbo trainer or gym bike?", a: "Most sessions have a trainer/gym bike alternative built in — look for the \"Trail / Trainer\" toggle on each session." },
-  { q: "Can I choose which days I ride?", a: "Yes — during setup you pick 2 or 3 days a week and exactly which ones, so it fits round work, family or weekend-only availability." },
+  { q: "Do I need to already own a mountain bike?", a: "No. You can start by using any safe, working bike you have access to. A mountain bike will make off-road riding more comfortable, but the early sessions can be done on paths, roads, and gentle trails." },
+  { q: "I have not ridden a bike in years. Is this really for me?", a: "Absolutely. The programme is designed for people starting from zero, returning after a long break, or rebuilding confidence. You begin gently and progress in small, manageable steps." },
+  { q: "What if I cannot ride very far yet?", a: "That is exactly where you are meant to start. Early rides may be short, with plenty of recovery and walking breaks if needed. There is no expectation to keep up with experienced riders." },
+  { q: "Do I need to be fit before I begin?", a: "No. The goal is to help you become fitter over time. You only need to be comfortable starting at your own level and taking things gradually." },
+  { q: "What does \"singletrack\" mean?", a: "Singletrack is a narrow off-road trail, usually wide enough for one rider at a time. It can be a smooth woodland path, dirt, gravel, roots, or gentle twists. You will build towards it rather than being sent straight onto technical trails." },
+  { q: "Is mountain biking dangerous?", a: "Like any activity, it has risks, but you can reduce them a lot by learning gradually, wearing a helmet, checking your bike, choosing suitable trails, and knowing that it is always fine to slow down or walk a section." },
+  { q: "What if I am nervous about falling off?", a: "That is very normal. The app should teach confidence skills progressively: braking, balance, cornering, getting on and off the bike, and choosing a safe line. Walking a feature is always a smart option, never a failure." },
+  { q: "Do I have to ride down steep hills or over jumps?", a: "No. You choose your own challenge level. There are no jumps, drops, or steep descents required to complete the programme. Many riders enjoy mountain biking for fitness, fresh air, and social rides without wanting technical features." },
+  { q: "What equipment do I need to get started?", a: "A safe bike, a properly fitted helmet, comfortable clothing, water, and something to repair a puncture are the basics. You do not need expensive shoes, clothing, suspension, or race equipment to begin." },
+  { q: "What type of mountain bike should I buy?", a: "Do not rush into buying one. If you decide to, a comfortable hardtail mountain bike from a reputable shop is often a great first choice." },
+  { q: "Can I do the programme on an e-bike?", a: "Yes, provided it is legal and suitable for the terrain where you ride. An e-bike can make hills and longer rides feel more approachable while still building skills, confidence, and fitness. Sessions can be based on time and effort, not only distance." },
+  { q: "What if I need to stop, repeat a week, or miss a few sessions?", a: "That is completely fine. Life happens. You can repeat sessions, take extra rest, or resume when you are ready. Progress is not ruined by a missed week." },
+  { q: "How much time will I need each week?", a: "The programme should fit around real life. A beginner-friendly plan might include two or three short rides per week, if you are struggling, you can note this when logging a ride and the system will reduce the level of workout in the next session." },
+  { q: "Where can I safely ride?", a: "You do not need mountains on your doorstep. Start with quiet cycle paths, parks, bridleways, forest roads, towpaths, and easy local trails where cycling is permitted. The app should clearly explain trail access, signs, and local etiquette." },
+  { q: "What if I do not have anyone to ride with?", a: "You can complete the whole programme solo. It can also help you find beginner-friendly group rides, bike shops, clubs, or event communities when you feel ready. Riding with others is optional, not a requirement." },
+  { q: "Do I have to race at the end?", a: "No. Racing is one possible destination, not the purpose of the programme. Your finish line might be feeling fitter, exploring local trails, riding with friends, commuting, or simply enjoying being outside." },
+  { q: "What is an MTB \"fun race,\" and can a beginner enter one?", a: "A fun race is an informal event where the emphasis is on completing the course and enjoying the day. Riders of mixed experience. You can aim for one when it feels exciting, or come along to watch first." },
+  { q: "Can I attend an event just to watch and see what it is like?", a: "Definitely. Watching is a brilliant, low-pressure way to learn what mountain biking events feel like, meet riders, ask questions, and decide whether you would enjoy taking part later. You do not need to earn your place in the community." },
+  { q: "What if I decide I never want to race or ride difficult trails?", a: "You have still succeeded. Sofa to Singletrack is about opening up cycling, not pushing everyone into the same outcome. If you finish fitter, happier, more confident on a bike, and able to enjoy the rides you choose, the programme has done its job." },
 ];
 
 function FAQSection() {
@@ -259,6 +269,22 @@ function FAQSection() {
 }
 
 const GENERIC_COACH_FALLBACK = "Nice work getting out there — keep it up and see you at the next session.";
+
+function formatMinutes(mins) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function formatElapsed(ms) {
+  const totalSecs = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
 
 function fillTemplate(str, vars) {
   return str.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : `{${k}}`));
@@ -308,6 +334,60 @@ function ContourProgress({ weeks, currentWeek }) {
   );
 }
 
+function polarToCartesian(cx, cy, r, angleDeg) {
+  const rad = (angleDeg * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) };
+}
+
+function SpeedoGauge({ pct }) {
+  const cx = 120, cy = 116, r = 90, trackWidth = 14;
+  const clamped = Math.max(0, Math.min(100, pct));
+  const start = polarToCartesian(cx, cy, r, 180);
+  const end = polarToCartesian(cx, cy, r, 0);
+  const arcLen = Math.PI * r;
+  const needleAngle = 180 - (clamped / 100) * 180;
+  const needleTip = polarToCartesian(cx, cy, r - trackWidth - 6, needleAngle);
+  return (
+    <svg viewBox="0 0 240 148" role="img" aria-label={`Programme ${clamped}% complete`} style={{ display: "block", width: "100%", height: "auto" }}>
+      <path d={`M ${start.x} ${start.y} A ${r} ${r} 0 1 1 ${end.x} ${end.y}`} fill="none" stroke="#2b2b2b" strokeWidth={trackWidth} strokeLinecap="round" />
+      {clamped > 0 && (
+        <path
+          d={`M ${start.x} ${start.y} A ${r} ${r} 0 1 1 ${end.x} ${end.y}`}
+          fill="none"
+          stroke="#1B8A82"
+          strokeWidth={trackWidth}
+          strokeLinecap="round"
+          strokeDasharray={`${(clamped / 100) * arcLen} ${arcLen}`}
+        />
+      )}
+      <line x1={cx} y1={cy} x2={needleTip.x} y2={needleTip.y} stroke="#E8792B" strokeWidth={3} strokeLinecap="round" />
+      <circle cx={cx} cy={cy} r={7} fill="#E8792B" />
+      <text x={cx} y={cy - 18} textAnchor="middle" className="display" fontSize="34" fill="#F4F3EF">{clamped}%</text>
+      <text x={cx} y={cy + 20} textAnchor="middle" fontSize="11" fill="#B9BDB8" fontWeight="600">PROGRAMME COMPLETE</text>
+    </svg>
+  );
+}
+
+function TrophyCase({ badges }) {
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Trophy case</div>
+      {badges.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 13, color: "#7A7E79", lineHeight: 1.5 }}>Keep going — your first trophy unlocks after your first week done.</p>
+      ) : (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {badges.map((b) => (
+            <div key={b} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 10, padding: "8px 12px" }}>
+              <span style={{ fontSize: 16 }}>🏆</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>{b}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function weeksBetween(dateStr) {
   const target = new Date(dateStr);
   const now = new Date();
@@ -319,7 +399,7 @@ function dateKey(d) {
   return d.toISOString().slice(0, 10);
 }
 
-function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLogged, totalSessions, badges }) {
+function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLogged, totalSessions, sessionDurations }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [previewKey, setPreviewKey] = useState(null);
 
@@ -330,7 +410,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
       const feeling = sessionLog[key];
       const status = feeling === undefined ? "upcoming" : feeling === "Didn't get to it" ? "skipped" : "done";
       const d = sessionDate(programStart, w.n, s.day);
-      sessionsByDate[dateKey(d)] = { status, name: s.name, detail: s.detail, mins: s.mins };
+      sessionsByDate[dateKey(d)] = { status, name: s.name, detail: s.detail, mins: sessionDurations[key] ?? s.mins };
     });
   });
   const adHocByDate = {};
@@ -363,17 +443,6 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
         <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Your calendar</div>
         <div style={{ fontSize: 12, fontWeight: 600, color: "#F4F3EF" }}>{totalRidesLogged}/{totalSessions} sessions logged</div>
       </div>
-
-      {badges.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0 4px" }}>
-          {badges.map((b) => (
-            <div key={b} style={{ display: "flex", alignItems: "center", gap: 4, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 14, padding: "3px 8px" }}>
-              <span style={{ fontSize: 11 }}>🏅</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#B9BDB8" }}>{b}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "12px 0 8px" }}>
         <button onClick={() => setMonthOffset((m) => Math.max(minOffset, m - 1))} disabled={monthOffset <= minOffset} style={monthNavBtn}>‹</button>
@@ -470,6 +539,9 @@ export default function SofaToSingletrack() {
   const [lastFeeling, setLastFeeling] = useState(null);
   const [checkinTarget, setCheckinTarget] = useState(null);
   const [adHocLog, setAdHocLog] = useState([]); // [{ week, at }]
+  const [sessionDurations, setSessionDurations] = useState({}); // "wN-i" -> actual mins, from the ride timer
+  const [activeTimer, setActiveTimer] = useState(null); // { key, startedAt } while a ride timer is running
+  const [nowTick, setNowTick] = useState(Date.now());
   const [notifAsked, setNotifAsked] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [reminderTime, setReminderTime] = useState("17:30");
@@ -519,6 +591,8 @@ export default function SofaToSingletrack() {
         if (saved.reminderTime) setReminderTime(saved.reminderTime);
         if (typeof saved.lastFeeling !== "undefined") setLastFeeling(saved.lastFeeling);
         if (saved.programStart) setProgramStart(new Date(saved.programStart));
+        if (saved.sessionDurations) setSessionDurations(saved.sessionDurations);
+        if (saved.activeTimer) setActiveTimer(saved.activeTimer);
         if (saved.stage && saved.stage !== "checkin") setStage(saved.stage);
       }
     } catch (e) {
@@ -530,16 +604,21 @@ export default function SofaToSingletrack() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), stage });
+      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), sessionDurations, activeTimer, stage });
       localStorage.setItem(STORAGE_KEY, payload);
     } catch (e) {
       // storage unavailable (private browsing, quota) — progress just won't persist
     }
-  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, stage]);
+  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, stage]);
 
   useEffect(() => { if (stage === "onboarding" && nameRef.current) nameRef.current.focus(); }, [stage, step]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), 3000); return () => clearTimeout(t); }, [toast]);
   useEffect(() => { const t = setTimeout(() => setShowSplash(false), 1600); return () => clearTimeout(t); }, []);
+  useEffect(() => {
+    if (!activeTimer) return;
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [activeTimer]);
 
   const allSessions = weeks.flatMap((w) =>
     w.sessions.map((s, i) => ({ key: `${w.n}-${i}`, weekN: w.n, idx: i, session: s, weekTitle: w.title }))
@@ -565,6 +644,23 @@ export default function SofaToSingletrack() {
     else break;
   }
   const totalRidesLogged = Object.values(sessionLog).filter((f) => f !== "Didn't get to it").length + adHocLog.length;
+
+  const structuredDone = allSessions.filter((s) => sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it").length;
+  const completionPct = allSessions.length ? Math.round((structuredDone / allSessions.length) * 100) : 0;
+  const totalMinutesRidden = allSessions.reduce((sum, s) => sum + (sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it" ? (sessionDurations[s.key] ?? s.session.mins) : 0), 0);
+
+  // Longest run of consecutive engaged weeks across the whole programme so far —
+  // distinct from streakWeeks above, which only counts the current run.
+  let longestStreakWeeks = 0;
+  let runningStreak = 0;
+  for (let w = 1; w <= weeks.length; w++) {
+    if (weekEngaged(w)) {
+      runningStreak++;
+      longestStreakWeeks = Math.max(longestStreakWeeks, runningStreak);
+    } else {
+      runningStreak = 0;
+    }
+  }
 
   const awardBadge = (label) => setBadges((prev) => (prev.includes(label) ? prev : [...prev, label]));
 
@@ -623,7 +719,22 @@ export default function SofaToSingletrack() {
   };
 
   const submitCheckin = (feeling) => checkinTarget && logSession(checkinTarget, feeling, { navigate: true });
-  const quickSkip = (target) => logSession(target, "Didn't get to it", { navigate: false });
+  const quickSkip = (target) => {
+    if (activeTimer && activeTimer.key === target.key) setActiveTimer(null);
+    logSession(target, "Didn't get to it", { navigate: false });
+  };
+
+  const startRideTimer = (target) => setActiveTimer({ key: target.key, startedAt: Date.now() });
+  const cancelRideTimer = () => setActiveTimer(null);
+  const finishRideTimer = () => {
+    if (!activeTimer) return;
+    const elapsedMins = Math.max(1, Math.round((Date.now() - activeTimer.startedAt) / 60000));
+    const key = activeTimer.key;
+    setSessionDurations((prev) => ({ ...prev, [key]: elapsedMins }));
+    setActiveTimer(null);
+    const target = allSessions.find((s) => s.key === key);
+    if (target) openCheckin(target);
+  };
 
   const backToDashboard = () => {
     setCheckinTarget(null);
@@ -705,6 +816,8 @@ export default function SofaToSingletrack() {
           <p style={{ fontSize: 11.5, color: "#7A7E79", lineHeight: 1.5, marginTop: 18 }}>
             Training and fuelling notes are general guidance from a fixed content library, not personalised medical, dietetic or coaching advice.
             Mountain biking carries a risk of injury — ride within your ability, and speak to a GP before starting if you have any health concerns.
+            Always wear a helmet when riding outside.
+            No data about you is recorded or held by MTB East CIC — everything you enter is stored only on this device.
           </p>
           <FAQSection />
         </div>
@@ -851,6 +964,25 @@ export default function SofaToSingletrack() {
             </p>
           </div>
 
+          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Your progress</div>
+            <div style={{ maxWidth: 260, margin: "0 auto" }}>
+              <SpeedoGauge pct={completionPct} />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <div style={{ flex: 1, background: "#0d0d0d", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
+                <div className="display" style={{ fontSize: 20, color: "#E8792B" }}>{formatMinutes(totalMinutesRidden)}</div>
+                <div style={{ fontSize: 10.5, color: "#B9BDB8", marginTop: 2 }}>Time ridden</div>
+              </div>
+              <div style={{ flex: 1, background: "#0d0d0d", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
+                <div className="display" style={{ fontSize: 20, color: "#E8792B" }}>{longestStreakWeeks}</div>
+                <div style={{ fontSize: 10.5, color: "#B9BDB8", marginTop: 2 }}>Best streak (weeks)</div>
+              </div>
+            </div>
+          </div>
+
+          <TrophyCase badges={badges} />
+
           {programmeComplete ? (
             <div>
               <div style={{ background: "#E8792B", borderRadius: 12, padding: "20px", textAlign: "center", color: "#fff", marginBottom: 16 }}>
@@ -915,6 +1047,17 @@ export default function SofaToSingletrack() {
                     <div style={{ fontSize: 11, color: "#7A7E79" }}>Real footage from your coach will go here</div>
                   </div>
                 </div>
+                {activeTimer && activeTimer.key === nextSession.key ? (
+                  <div style={{ background: "#0d0d0d", borderRadius: 10, padding: "16px", marginBottom: 12, textAlign: "center", border: "1px solid #1B8A82" }}>
+                    <div className="display" style={{ fontSize: 32, color: "#F4F3EF", marginBottom: 10 }}>{formatElapsed(nowTick - activeTimer.startedAt)}</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
+                      <button onClick={cancelRideTimer} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => startRideTimer(nextSession)} style={{ ...navBtn, background: "#E8792B" }}>▶ Start ride timer</button>
+                )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => openCheckin(nextSession)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Log this session</button>
                   <button onClick={() => downloadSessionICS(nextSession.session, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>+ Cal</button>
@@ -947,8 +1090,16 @@ export default function SofaToSingletrack() {
             programStart={programStart}
             totalRidesLogged={Object.keys(sessionLog).filter((k) => sessionLog[k] !== "Didn't get to it").length}
             totalSessions={allSessions.length}
-            badges={badges}
+            sessionDurations={sessionDurations}
           />
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#161616", border: "1px solid #2b2b2b", borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Been out on your bike off-plan?</div>
+              <div style={{ fontSize: 11, color: "#B9BDB8" }}>Any ride counts — not just the scheduled ones</div>
+            </div>
+            <button onClick={logAdHocRide} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ Log a ride</button>
+          </div>
 
           {streakWeeks > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
@@ -959,30 +1110,20 @@ export default function SofaToSingletrack() {
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <button style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>💬 Chat with a coach</button>
             <button style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>📅 MTB East race calendar</button>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#161616", border: "1px solid #2b2b2b", borderRadius: 8, padding: "10px 12px", marginBottom: 20 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Been out on your bike off-plan?</div>
-              <div style={{ fontSize: 11, color: "#B9BDB8" }}>Any ride counts — not just the scheduled ones</div>
-            </div>
-            <button onClick={logAdHocRide} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ Log a ride</button>
-          </div>
-
-          <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
-            <ContourProgress weeks={weeks} currentWeek={currentWeekN} />
-          </div>
-
-          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", border: "1px solid #2b2b2b" }}>
+          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fuelling tip</div>
             <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{NUTRITION_TIPS[tipIndex]}</p>
             <button onClick={() => setTipIndex((i) => (i + 1) % NUTRITION_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
           </div>
 
           <FAQSection />
+
+          <a href="mailto:info@mtbeast.co.uk?subject=Sofa%20to%20Singletrack%20feedback" style={{ display: "block", textAlign: "center", background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, textDecoration: "none", marginTop: 16 }}>💡 Suggest a feature / report a bug</a>
         </div>
       )}
 
