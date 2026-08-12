@@ -428,6 +428,15 @@ function dateKey(d) {
   return d.toISOString().slice(0, 10);
 }
 
+function weekNumberForDate(programStart, date) {
+  const start = new Date(programStart);
+  start.setHours(0, 0, 0, 0);
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((d - start) / (1000 * 60 * 60 * 24));
+  return Math.floor(diffDays / 7) + 1;
+}
+
 function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLogged, totalSessions, sessionDurations }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [previewKey, setPreviewKey] = useState(null);
@@ -445,7 +454,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
   const adHocByDate = {};
   adHocLog.forEach((r) => {
     const k = dateKey(new Date(r.at));
-    adHocByDate[k] = (adHocByDate[k] || 0) + 1;
+    (adHocByDate[k] = adHocByDate[k] || []).push(r);
   });
 
   const viewDate = new Date(programStart.getFullYear(), programStart.getMonth() + monthOffset, 1);
@@ -489,8 +498,10 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
       {rows.map((row, ri) => {
         const rowMins = row.reduce((sum, d) => {
           if (!d) return sum;
-          const info = sessionsByDate[dateKey(d)];
-          return sum + (info && info.status === "done" ? (info.mins || 0) : 0);
+          const k = dateKey(d);
+          const info = sessionsByDate[k];
+          const adHocMins = (adHocByDate[k] || []).reduce((s, r) => s + (r.mins || 0), 0);
+          return sum + (info && info.status === "done" ? (info.mins || 0) : 0) + adHocMins;
         }, 0);
         return (
           <div key={ri} style={{ display: "flex", alignItems: "center", gap: 3, marginBottom: 3 }}>
@@ -498,16 +509,18 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
               if (!d) return <div key={ci} style={{ flex: 1 }} />;
               const k = dateKey(d);
               const info = sessionsByDate[k];
-              const hasAdHoc = adHocByDate[k];
+              const adHocForDay = adHocByDate[k] || [];
+              const hasAdHoc = adHocForDay.length > 0;
+              const hasPreviewContent = info || hasAdHoc;
               const isToday = k === todayKey;
               const isPreviewing = previewKey === k;
               return (
                 <div key={ci} style={{ flex: 1, position: "relative" }}>
                   <div
-                    onMouseEnter={() => info && setPreviewKey(k)}
+                    onMouseEnter={() => hasPreviewContent && setPreviewKey(k)}
                     onMouseLeave={() => setPreviewKey((cur) => (cur === k ? null : cur))}
-                    onClick={() => info && setPreviewKey((cur) => (cur === k ? null : k))}
-                    style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "3px 0", borderRadius: 6, border: isToday ? "1px solid #E8792B" : "1px solid transparent", cursor: info ? "pointer" : "default" }}
+                    onClick={() => hasPreviewContent && setPreviewKey((cur) => (cur === k ? null : k))}
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "3px 0", borderRadius: 6, border: isToday ? "1px solid #E8792B" : "1px solid transparent", cursor: hasPreviewContent ? "pointer" : "default" }}
                   >
                     <span style={{ fontSize: 11, color: "#F4F3EF" }}>{d.getDate()}</span>
                     <div style={{ display: "flex", gap: 2 }}>
@@ -517,10 +530,20 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                       {hasAdHoc && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#FFD400" }} />}
                     </div>
                   </div>
-                  {isPreviewing && info && (
-                    <div style={{ position: "absolute", zIndex: 20, bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 6, width: 150, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 8, padding: "8px 10px", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 700, color: "#E8792B", marginBottom: 2 }}>{info.name}</div>
-                      <div style={{ fontSize: 10.5, color: "#B9BDB8", lineHeight: 1.4 }}>{info.detail}</div>
+                  {isPreviewing && hasPreviewContent && (
+                    <div style={{ position: "absolute", zIndex: 20, bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 6, width: 160, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 8, padding: "8px 10px", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}>
+                      {info && (
+                        <>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#E8792B", marginBottom: 2 }}>{info.name}</div>
+                          <div style={{ fontSize: 10.5, color: "#B9BDB8", lineHeight: 1.4 }}>{info.detail}</div>
+                        </>
+                      )}
+                      {hasAdHoc && adHocForDay.map((r, i) => (
+                        <div key={i} style={{ marginTop: info || i > 0 ? 6 : 0 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#FFD400" }}>Extra ride{r.mins ? ` — ${r.mins}m` : ""}</div>
+                          {r.feeling && <div style={{ fontSize: 10.5, color: "#B9BDB8", lineHeight: 1.4 }}>{r.feeling}</div>}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -591,6 +614,10 @@ export default function SofaToSingletrack() {
   const [loaded, setLoaded] = useState(false);
   const [qaTopics, setQaTopics] = useState([]);
   const [qaNotes, setQaNotes] = useState("");
+  const [adHocFormOpen, setAdHocFormOpen] = useState(false);
+  const [adHocDate, setAdHocDate] = useState("");
+  const [adHocMins, setAdHocMins] = useState("");
+  const [adHocFeeling, setAdHocFeeling] = useState("About right");
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const nameRef = useRef(null);
@@ -689,15 +716,16 @@ export default function SofaToSingletrack() {
 
   const structuredDone = allSessions.filter((s) => sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it").length;
   const completionPct = allSessions.length ? Math.round((structuredDone / allSessions.length) * 100) : 0;
-  const totalMinutesRidden = allSessions.reduce((sum, s) => sum + (sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it" ? (sessionDurations[s.key] ?? s.session.mins) : 0), 0);
+  const adHocMinutesRidden = adHocLog.reduce((sum, r) => sum + (r.mins || 0), 0);
+  const totalMinutesRidden = allSessions.reduce((sum, s) => sum + (sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it" ? (sessionDurations[s.key] ?? s.session.mins) : 0), 0) + adHocMinutesRidden;
 
   // Recap of the week just gone, shown on the dashboard — only surfaced when
   // there's something to report, never to call out an empty week.
   const lastWeekN = currentWeekN - 1;
   const lastWeekStructured = allSessions.filter((s) => s.weekN === lastWeekN && sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it");
-  const lastWeekAdHocCount = adHocLog.filter((r) => r.week === lastWeekN).length;
-  const lastWeekRideCount = lastWeekStructured.length + lastWeekAdHocCount;
-  const lastWeekMinutes = lastWeekStructured.reduce((sum, s) => sum + (sessionDurations[s.key] ?? s.session.mins), 0);
+  const lastWeekAdHoc = adHocLog.filter((r) => r.week === lastWeekN);
+  const lastWeekRideCount = lastWeekStructured.length + lastWeekAdHoc.length;
+  const lastWeekMinutes = lastWeekStructured.reduce((sum, s) => sum + (sessionDurations[s.key] ?? s.session.mins), 0) + lastWeekAdHoc.reduce((sum, r) => sum + (r.mins || 0), 0);
 
   // Longest run of consecutive engaged weeks across the whole programme so far —
   // distinct from streakWeeks above, which only counts the current run.
@@ -891,9 +919,26 @@ export default function SofaToSingletrack() {
     }
   };
 
-  const logAdHocRide = () => {
-    const newAdHocLog = [...adHocLog, { week: currentWeekN, at: Date.now() }];
+  const openAdHocForm = () => {
+    setAdHocDate(dateKey(new Date()));
+    setAdHocMins("");
+    setAdHocFeeling("About right");
+    setAdHocFormOpen(true);
+  };
+
+  const cancelAdHocForm = () => setAdHocFormOpen(false);
+
+  const submitAdHocRide = () => {
+    const mins = parseInt(adHocMins, 10);
+    if (!mins || mins <= 0) {
+      showToast("Add how many minutes you rode.");
+      return;
+    }
+    const rideDate = adHocDate ? new Date(`${adHocDate}T12:00:00`) : new Date();
+    const week = weekNumberForDate(programStart, rideDate);
+    const newAdHocLog = [...adHocLog, { week, at: rideDate.getTime(), mins, feeling: adHocFeeling }];
     setAdHocLog(newAdHocLog);
+    setAdHocFormOpen(false);
     const justAwarded = checkAllBadges(sessionLog, newAdHocLog);
     if (justAwarded.length > 0) {
       celebrateTrophies(justAwarded);
@@ -1272,12 +1317,45 @@ export default function SofaToSingletrack() {
             sessionDurations={sessionDurations}
           />
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#161616", border: "1px solid #2b2b2b", borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Been out on your bike off-plan?</div>
-              <div style={{ fontSize: 11, color: "#B9BDB8" }}>Any ride counts — not just the scheduled ones</div>
-            </div>
-            <button onClick={logAdHocRide} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ Log a ride</button>
+          <div style={{ background: "#161616", border: "1px solid #2b2b2b", borderRadius: 8, padding: adHocFormOpen ? "14px" : "10px 12px", marginBottom: 16 }}>
+            {!adHocFormOpen ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Been out on your bike off-plan?</div>
+                  <div style={{ fontSize: 11, color: "#B9BDB8" }}>Any ride counts — not just the scheduled ones</div>
+                </div>
+                <button onClick={openAdHocForm} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ Log a ride</button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF", marginBottom: 10 }}>Log an extra ride</div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontSize: 10.5, color: "#B9BDB8", marginBottom: 4 }}>Date</label>
+                    <input type="date" value={adHocDate} max={dateKey(new Date())} onChange={(e) => setAdHocDate(e.target.value)}
+                      style={{ width: "100%", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "8px", fontSize: 13, boxSizing: "border-box" }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontSize: 10.5, color: "#B9BDB8", marginBottom: 4 }}>Minutes</label>
+                    <input type="number" inputMode="numeric" min="1" value={adHocMins} onChange={(e) => setAdHocMins(e.target.value)} placeholder="30"
+                      style={{ width: "100%", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "8px", fontSize: 13, boxSizing: "border-box" }} />
+                  </div>
+                </div>
+                <label style={{ display: "block", fontSize: 10.5, color: "#B9BDB8", marginBottom: 6 }}>How did it feel?</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+                  {FEELINGS.map((f) => (
+                    <button key={f} onClick={() => setAdHocFeeling(f)}
+                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid " + (adHocFeeling === f ? "#1B8A82" : "#2b2b2b"), background: adHocFeeling === f ? "#1B8A82" : "#0d0d0d", color: adHocFeeling === f ? "#fff" : "#B9BDB8", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={submitAdHocRide} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Save ride</button>
+                  <button onClick={cancelAdHocForm} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 14px", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {streakWeeks > 0 && (
