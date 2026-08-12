@@ -640,7 +640,7 @@ export default function SofaToSingletrack() {
   const [qaNotes, setQaNotes] = useState("");
   const [adHocFormOpen, setAdHocFormOpen] = useState(false);
   const [adHocDate, setAdHocDate] = useState("");
-  const [adHocMins, setAdHocMins] = useState("");
+  const [adHocMins, setAdHocMins] = useState("30");
   const [adHocFeeling, setAdHocFeeling] = useState("About right");
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -1069,7 +1069,7 @@ export default function SofaToSingletrack() {
 
   const openAdHocForm = () => {
     setAdHocDate(dateKey(new Date()));
-    setAdHocMins("");
+    setAdHocMins("30");
     setAdHocFeeling("About right");
     setAdHocFormOpen(true);
   };
