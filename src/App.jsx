@@ -181,7 +181,7 @@ function TopoBackground() {
       style={{
         position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none",
         backgroundImage: "url(/brand/topo-bg.webp)", backgroundSize: "cover",
-        backgroundPosition: "center", opacity: 0.18,
+        backgroundPosition: "center", opacity: 0.85,
       }}
     />
   );
