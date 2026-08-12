@@ -131,6 +131,14 @@ const NUTRITION_TIPS = [
   "On hot days, add a pinch of salt to your water bottle or use an electrolyte tablet.",
 ];
 
+const BIKE_CARE_TIPS = [
+  "Check your tyre pressure before every ride — soft tyres are the most common cause of a sluggish, hard-feeling ride.",
+  "Quick brake check before you set off: squeeze each lever and make sure the wheel doesn't spin freely with it held.",
+  "Keep your chain lightly oiled — a dry, squeaky chain wears out faster and shifts badly.",
+  "After a wet or muddy ride, a quick wipe-down keeps grit out of your moving parts and extends your bike's life.",
+  "Learn the M-check — a two-minute top-to-bottom safety check worth doing before any ride on unfamiliar ground.",
+];
+
 function toICSDate(date) {
   return date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 }
@@ -168,16 +176,14 @@ function downloadSessionICS(session, weekNum, weekTitle, programStart) {
 }
 
 function TopoBackground() {
-  const rows = 14;
   return (
-    <svg style={{ position: "fixed", inset: 0, width: "100%", height: "100%", zIndex: 0, pointerEvents: "none" }} preserveAspectRatio="none" viewBox="0 0 400 800">
-      {Array.from({ length: rows }).map((_, i) => {
-        const baseY = (i / rows) * 800 + 20;
-        const amp = 18 + (i % 3) * 6;
-        const d = `M -20 ${baseY} C 60 ${baseY - amp}, 120 ${baseY + amp}, 200 ${baseY} S 340 ${baseY - amp}, 420 ${baseY}`;
-        return <path key={i} d={d} fill="none" stroke={i % 2 === 0 ? "#1B8A82" : "#E8792B"} strokeWidth="0.7" opacity="0.06" />;
-      })}
-    </svg>
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none",
+        backgroundImage: "url(/brand/topo-bg.webp)", backgroundSize: "cover",
+        backgroundPosition: "center", opacity: 0.18,
+      }}
+    />
   );
 }
 
@@ -269,6 +275,15 @@ function FAQSection() {
 }
 
 const GENERIC_COACH_FALLBACK = "Nice work getting out there — keep it up and see you at the next session.";
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
 
 function formatMinutes(mins) {
   const h = Math.floor(mins / 60);
@@ -570,6 +585,7 @@ export default function SofaToSingletrack() {
   const [coachNote, setCoachNote] = useState("");
   const [welcomeNote, setWelcomeNote] = useState("");
   const [tipIndex, setTipIndex] = useState(0);
+  const [bikeTipIndex, setBikeTipIndex] = useState(0);
   const [programStart, setProgramStart] = useState(new Date());
   const [mode, setMode] = useState({});
   const [bikeCheckDone, setBikeCheckDone] = useState(false);
@@ -899,6 +915,94 @@ export default function SofaToSingletrack() {
     }
   };
 
+  const generateFinishCardBlob = async () => {
+    try { await document.fonts.load("700 76px Oswald"); } catch (e) { /* fall back to default font */ }
+    try { await document.fonts.load("600 28px 'Source Sans 3'"); } catch (e) { /* fall back to default font */ }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080;
+    canvas.height = 1080;
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = "#14171A";
+    ctx.fillRect(0, 0, 1080, 1080);
+    ctx.globalAlpha = 0.1;
+    ctx.fillStyle = "#E8792B";
+    ctx.beginPath();
+    ctx.arc(1080, 0, 520, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    try {
+      const logo = await loadImage("/brand/header-mark.png");
+      ctx.drawImage(logo, 490, 90, 100, 100);
+    } catch (e) { /* logo optional, card still works without it */ }
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#B9BDB8";
+    ctx.font = "600 28px 'Source Sans 3', sans-serif";
+    ctx.fillText("MTB EAST", 540, 240);
+
+    ctx.fillStyle = "#E8792B";
+    ctx.font = "700 76px Oswald, sans-serif";
+    ctx.fillText("SOFA TO", 540, 350);
+    ctx.fillText("SINGLETRACK", 540, 430);
+
+    ctx.fillStyle = "#F4F3EF";
+    ctx.font = "700 50px Oswald, sans-serif";
+    ctx.fillText("I'M A REGULAR RIDER NOW", 540, 560);
+
+    const stats = [
+      { label: "WEEKS", value: String(weeks.length) },
+      { label: "RIDES", value: String(totalRidesLogged) },
+      { label: "TIME RIDDEN", value: formatMinutes(totalMinutesRidden) },
+    ];
+    const startX = 540 - (stats.length - 1) * 150;
+    stats.forEach((s, i) => {
+      const x = startX + i * 300;
+      ctx.fillStyle = "#1B8A82";
+      ctx.font = "700 56px Oswald, sans-serif";
+      ctx.fillText(s.value, x, 700);
+      ctx.fillStyle = "#B9BDB8";
+      ctx.font = "600 20px 'Source Sans 3', sans-serif";
+      ctx.fillText(s.label, x, 735);
+    });
+
+    ctx.fillStyle = "#7A7E79";
+    ctx.font = "500 22px 'Source Sans 3', sans-serif";
+    ctx.fillText("An MTB East programme", 540, 980);
+
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  };
+
+  const handleShareFinishCard = async () => {
+    const blob = await generateFinishCardBlob();
+    if (!blob) {
+      showToast("Couldn't create the image — try again.");
+      return;
+    }
+    const file = new File([blob], "sofa-to-singletrack-complete.png", { type: "image/png" });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Sofa to Singletrack", text: "I finished the Sofa to Singletrack programme with MTB East!" });
+        return;
+      } catch (e) {
+        return; // user cancelled the share sheet
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sofa-to-singletrack-complete.png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Image saved — share it from your photos!");
+  };
+
   const openAdHocForm = () => {
     setAdHocDate(dateKey(new Date()));
     setAdHocMins("");
@@ -994,9 +1098,12 @@ export default function SofaToSingletrack() {
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px 40px" }}>
           <div className="display" style={{ fontSize: 12, color: "#1B8A82", marginBottom: 8 }}>AN MTB EAST PROGRAMME</div>
           <h1 className="display" style={{ fontSize: 40, lineHeight: 1.05, margin: "0 0 16px", color: "#E8792B" }}>SOFA TO<br />SINGLETRACK</h1>
-          <p style={{ fontSize: 16, lineHeight: 1.5, color: "#F4F3EF", marginBottom: 28 }}>
+          <p style={{ fontSize: 16, lineHeight: 1.5, color: "#F4F3EF", marginBottom: 10 }}>
             A simple plan to get you riding regularly — 2 or 3 sessions a week, on days that work for you, time-based
             so you don't need a fancy bike computer. Racing is entirely optional, and never the point.
+          </p>
+          <p style={{ fontSize: 13, lineHeight: 1.5, color: "#B9BDB8", marginBottom: 28 }}>
+            Built by MTB East, for off-road riding specifically — not a general cycling app. Real local trails, a real local club.
           </p>
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 28, border: "1px solid #2b2b2b" }}>
             <ContourProgress weeks={buildProgramme(8, ["Tue", "Thu", "Sat"])} currentWeek={1} />
@@ -1262,6 +1369,7 @@ export default function SofaToSingletrack() {
               <div style={{ background: "#E8792B", borderRadius: 12, padding: "20px", textAlign: "center", color: "#fff", marginBottom: 16 }}>
                 <div className="display" style={{ fontSize: 18, marginBottom: 6 }}>YOU'RE A REGULAR RIDER NOW</div>
                 <p style={{ margin: 0, fontSize: 14 }}>That's the real win. Racing from here is entirely optional.</p>
+                <button onClick={handleShareFinishCard} style={{ marginTop: 14, background: "#14171A", border: "none", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>📸 Share your achievement</button>
               </div>
               <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid #2b2b2b" }}>
                 <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Fancy trying a race?</div>
@@ -1375,6 +1483,12 @@ export default function SofaToSingletrack() {
             <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fuelling tip</div>
             <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{NUTRITION_TIPS[tipIndex]}</p>
             <button onClick={() => setTipIndex((i) => (i + 1) % NUTRITION_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
+          </div>
+
+          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Bike care tip</div>
+            <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{BIKE_CARE_TIPS[bikeTipIndex]}</p>
+            <button onClick={() => setBikeTipIndex((i) => (i + 1) % BIKE_CARE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
           </div>
 
           <FAQSection />
