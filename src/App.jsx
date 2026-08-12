@@ -397,26 +397,6 @@ function Confetti() {
   );
 }
 
-function TrophyCase({ badges }) {
-  return (
-    <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Trophy case</div>
-      {badges.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: "#7A7E79", lineHeight: 1.5 }}>Keep going — your first trophy unlocks after your first week done.</p>
-      ) : (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {badges.map((b) => (
-            <div key={b} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 10, padding: "8px 12px" }}>
-              <span style={{ fontSize: 16 }}>🏆</span>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>{b}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function weeksBetween(dateStr) {
   const target = new Date(dateStr);
   const now = new Date();
@@ -978,10 +958,10 @@ export default function SofaToSingletrack() {
   };
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", background: "#000000", color: "#F4F3EF", minHeight: "100vh", position: "relative" }}>
+    <div style={{ fontFamily: "'Source Sans 3', sans-serif", background: "#000000", color: "#F4F3EF", minHeight: "100vh", position: "relative" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fjalla+One&family=Inter:wght@400;500;600;700&display=swap');
-        .display { font-family: 'Fjalla One', sans-serif; letter-spacing: 0.04em; }
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+        .display { font-family: 'Oswald', sans-serif; letter-spacing: 0.02em; font-weight: 600; }
         button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #E8792B; outline-offset: 2px; }
         @keyframes toastPop { 0% { transform: translateX(-50%) scale(0.85); opacity: 0; } 60% { transform: translateX(-50%) scale(1.06); opacity: 1; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
         .toast-pop { animation: toastPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
@@ -1230,7 +1210,7 @@ export default function SofaToSingletrack() {
             </div>
           )}
 
-          <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#1B8A82", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
               Week {currentWeekN} of {weeks.length}
             </div>
@@ -1242,9 +1222,9 @@ export default function SofaToSingletrack() {
                 Last week: {lastWeekRideCount} ride{lastWeekRideCount === 1 ? "" : "s"} · {formatMinutes(lastWeekMinutes)} ridden
               </p>
             )}
-          </div>
 
-          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+            <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0" }} />
+
             <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Your progress</div>
             <div style={{ maxWidth: 260, margin: "0 auto" }}>
               <SpeedoGauge pct={completionPct} />
@@ -1259,9 +1239,23 @@ export default function SofaToSingletrack() {
                 <div style={{ fontSize: 10.5, color: "#B9BDB8", marginTop: 2 }}>Best streak (weeks)</div>
               </div>
             </div>
-          </div>
 
-          <TrophyCase badges={badges} />
+            <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Trophy case</div>
+            {badges.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 13, color: "#7A7E79", lineHeight: 1.5 }}>Keep going — your first trophy unlocks after your first week done.</p>
+            ) : (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {badges.map((b) => (
+                  <div key={b} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 10, padding: "8px 12px" }}>
+                    <span style={{ fontSize: 16 }}>🏆</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>{b}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {programmeComplete ? (
             <div>
@@ -1367,9 +1361,14 @@ export default function SofaToSingletrack() {
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <button onClick={() => setStage("coachQA")} style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>💬 Contact a coach</button>
-            <a href="https://www.mtbeast.co.uk" target="_blank" rel="noopener noreferrer" style={{ flex: 1, background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, textDecoration: "none", textAlign: "center", boxSizing: "border-box" }}>📅 MTB East race calendar</a>
+          <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Get in touch</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button onClick={() => setStage("coachQA")} style={actionGridBtn}>💬 Contact a coach</button>
+              <a href="https://www.mtbeast.co.uk" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>📅 Race calendar</a>
+              <button onClick={handleShare} style={actionGridBtn}>📤 Share this app</button>
+              <a href="mailto:info@mtbeast.co.uk?subject=Sofa%20to%20Singletrack%20feedback" style={actionGridBtn}>💡 Feedback / bug</a>
+            </div>
           </div>
 
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
@@ -1379,10 +1378,6 @@ export default function SofaToSingletrack() {
           </div>
 
           <FAQSection />
-
-          <button onClick={handleShare} style={{ display: "block", width: "100%", textAlign: "center", background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", marginTop: 16 }}>📤 Know someone who'd like this? Share it</button>
-
-          <a href="mailto:info@mtbeast.co.uk?subject=Sofa%20to%20Singletrack%20feedback" style={{ display: "block", textAlign: "center", background: "#161616", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, textDecoration: "none", marginTop: 10 }}>💡 Suggest a feature / report a bug</a>
         </div>
       )}
 
@@ -1474,3 +1469,4 @@ const navBtn = { width: "100%", padding: "14px 0", background: "#1B8A82", color:
 const backBtn = { width: "100%", padding: "12px 0", background: "none", color: "#B9BDB8", border: "none", fontSize: 14, cursor: "pointer" };
 const choiceBtn = { display: "block", width: "100%", textAlign: "left", padding: "14px 16px", marginBottom: 10, background: "#161616", border: "1.5px solid #2b2b2b", color: "#F4F3EF", borderRadius: 10, fontSize: 15, cursor: "pointer" };
 const inputStyle = { width: "100%", padding: "12px 14px", borderRadius: 8, border: "1px solid #2b2b2b", background: "#161616", color: "#F4F3EF", fontSize: 16, marginBottom: 20, boxSizing: "border-box" };
+const actionGridBtn = { display: "block", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer", textAlign: "center", textDecoration: "none", boxSizing: "border-box" };
