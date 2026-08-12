@@ -40,6 +40,9 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 // scaled version — see buildProgramme below. Session detail/trainerAlt text
 // uses a {mins} placeholder so the duration can shift with a rider's ±5 min
 // difficulty adjustment (see applyFeelingAdjustment) without rewriting copy.
+// Add a `video: "<YouTube video ID>"` field to any session below to swap its
+// "coming soon" placeholder for a real thumbnail linking out to YouTube —
+// the ID is the part after ?v= in the video's URL. Leave it off for now.
 const PHASES = [
   {
     title: "Off the sofa", focus: "Short flat rides, get comfortable on the bike",
@@ -1355,13 +1358,24 @@ export default function SofaToSingletrack() {
                   })}
                 </div>
               )}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#0d0d0d", borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: "1px dashed #2b2b2b" }}>
-                <span style={{ fontSize: 18 }}>🎥</span>
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Video demo — coming soon</div>
-                  <div style={{ fontSize: 11, color: "#7A7E79" }}>Real footage from your coach will go here</div>
+              {nextSessionEffective.video ? (
+                <a href={`https://www.youtube.com/watch?v=${nextSessionEffective.video}`} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "flex", alignItems: "center", gap: 10, background: "#0d0d0d", borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: "1px solid #2b2b2b", textDecoration: "none" }}>
+                  <img src={`https://img.youtube.com/vi/${nextSessionEffective.video}/hqdefault.jpg`} alt="" width={64} height={36} style={{ borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>▶ Watch the demo</div>
+                    <div style={{ fontSize: 11, color: "#7A7E79" }}>Opens on YouTube</div>
+                  </div>
+                </a>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#0d0d0d", borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: "1px dashed #2b2b2b" }}>
+                  <span style={{ fontSize: 18 }}>🎥</span>
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Video demo — coming soon</div>
+                    <div style={{ fontSize: 11, color: "#7A7E79" }}>Real footage from your coach will go here</div>
+                  </div>
                 </div>
-              </div>
+              )}
               {activeTimer && activeTimer.key === nextSession.key ? (
                 <div style={{ background: "#0d0d0d", borderRadius: 10, padding: "16px", marginBottom: 12, textAlign: "center", border: "1px solid rgb(102, 255, 0)" }}>
                   <div className="display" style={{ fontSize: 32, color: "#F4F3EF", marginBottom: 10 }}>{formatElapsed(nowTick - activeTimer.startedAt)}</div>
