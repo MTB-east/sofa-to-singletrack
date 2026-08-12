@@ -35,81 +35,106 @@ const MTB_EAST_RACES = [
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-const TEMPLATE = [
+// One canonical 3-month (12-week) plan. Shorter programmes (1 or 2 months)
+// just use the first 4 or 8 weeks of this same plan rather than a separately
+// scaled version — see buildProgramme below. Session detail/trainerAlt text
+// uses a {mins} placeholder so the duration can shift with a rider's ±5 min
+// difficulty adjustment (see applyFeelingAdjustment) without rewriting copy.
+const PHASES = [
   {
     title: "Off the sofa", focus: "Short flat rides, get comfortable on the bike",
     sessions: [
-      { name: "Easy spin", mins: 20, detail: "20 min, flat path, stay seated, get used to the bike", trainerAlt: "20 min on a trainer/gym bike, easy spin, no resistance changes — just get used to pedalling rhythm" },
-      { name: "Easy spin", mins: 20, detail: "20 min, flat path, practice looking up rather than at the front wheel", trainerAlt: "20 min easy spin on a gym bike, focus on relaxed shoulders and hands" },
-      { name: "Steady ride", mins: 30, detail: "30 min, flat/gentle terrain, 2–3 stops to practice clipping in/out", trainerAlt: "30 min steady effort on a trainer, low resistance, no drills needed" },
+      { name: "Easy spin", mins: 20, detail: "{mins} min, flat path, stay seated, get used to the bike", trainerAlt: "{mins} min on a trainer/gym bike, easy spin, no resistance changes — just get used to pedalling rhythm" },
+      { name: "Easy spin", mins: 20, detail: "{mins} min, flat path, practice looking up rather than at the front wheel", trainerAlt: "{mins} min easy spin on a gym bike, focus on relaxed shoulders and hands" },
+      { name: "Steady ride", mins: 30, detail: "{mins} min, flat/gentle terrain, 2–3 stops to practice clipping in/out", trainerAlt: "{mins} min steady effort on a trainer, low resistance, no drills needed" },
     ],
   },
   {
     title: "Finding balance", focus: "Basic bike handling: braking, cornering, body position",
     sessions: [
-      { name: "Handling drills", mins: 25, detail: "25 min: figure-of-8s in a car park or field, slow-speed balance", trainerAlt: "No direct trainer equivalent — swap for 20 min core/balance work (planks, single-leg stands)" },
-      { name: "Braking practice", mins: 25, detail: "25 min flat ride, 8x practice stops — front/rear brake balance", trainerAlt: "25 min on a trainer, alternate 2 min seated / 1 min standing efforts to build bike-handling strength" },
-      { name: "Easy trail ride", mins: 35, detail: "35 min gentle wide singletrack, focus on body position on corners", trainerAlt: "35 min steady spin on a gym bike, moderate resistance" },
+      { name: "Handling drills", mins: 25, detail: "{mins} min: figure-of-8s in a car park or field, slow-speed balance", trainerAlt: "No direct trainer equivalent — swap for 20 min core/balance work (planks, single-leg stands)" },
+      { name: "Braking practice", mins: 25, detail: "{mins} min flat ride, 8x practice stops — front/rear brake balance", trainerAlt: "{mins} min on a trainer, alternate 2 min seated / 1 min standing efforts to build bike-handling strength" },
+      { name: "Easy trail ride", mins: 35, detail: "{mins} min gentle wide singletrack, focus on body position on corners", trainerAlt: "{mins} min steady spin on a gym bike, moderate resistance" },
     ],
   },
   {
     title: "First climbs", focus: "Gentle gradients, gear selection, pacing",
     sessions: [
-      { name: "Gear practice", mins: 25, detail: "25 min flat, shift before (not during) short rises", trainerAlt: "25 min on a trainer practising smooth gear changes under light load" },
-      { name: "Easy spin", mins: 25, detail: "25 min recovery ride, low effort", trainerAlt: "25 min easy spin on a gym bike, very light resistance" },
-      { name: "Hill intro", mins: 40, detail: "40 min incl. 3x short gentle climbs, walk anything too steep", trainerAlt: "40 min on a trainer, 3x5 min at raised resistance simulating a climb, easy spin between" },
+      { name: "Gear practice", mins: 25, detail: "{mins} min flat, shift before (not during) short rises", trainerAlt: "{mins} min on a trainer practising smooth gear changes under light load" },
+      { name: "Easy spin", mins: 25, detail: "{mins} min recovery ride, low effort", trainerAlt: "{mins} min easy spin on a gym bike, very light resistance" },
+      { name: "Hill intro", mins: 40, detail: "{mins} min incl. 3x short gentle climbs, walk anything too steep", trainerAlt: "{mins} min on a trainer, 3x5 min at raised resistance simulating a climb, easy spin between" },
     ],
   },
   {
     title: "Rolling terrain", focus: "Mixed surface rides, short technical sections",
     sessions: [
-      { name: "Mixed terrain", mins: 35, detail: "35 min, alternate gravel and packed dirt", trainerAlt: "35 min steady effort on a gym bike, varying cadence every 5 min" },
-      { name: "Skills session", mins: 25, detail: "25 min, small roots/ruts at walking pace, practice weighting pedals", trainerAlt: "No direct trainer equivalent — swap for 20 min leg strength (squats, step-ups)" },
-      { name: "Rolling ride", mins: 45, detail: "45 min rolling singletrack, no time pressure", trainerAlt: "45 min on a trainer, gently varying resistance to mimic rolling terrain" },
+      { name: "Mixed terrain", mins: 35, detail: "{mins} min, alternate gravel and packed dirt", trainerAlt: "{mins} min steady effort on a gym bike, varying cadence every 5 min" },
+      { name: "Skills session", mins: 25, detail: "{mins} min, small roots/ruts at walking pace, practice weighting pedals", trainerAlt: "No direct trainer equivalent — swap for 20 min leg strength (squats, step-ups)" },
+      { name: "Rolling ride", mins: 45, detail: "{mins} min rolling singletrack, no time pressure", trainerAlt: "{mins} min on a trainer, gently varying resistance to mimic rolling terrain" },
     ],
   },
   {
     title: "Building endurance", focus: "Longer rides, fuelling practice on the bike",
     sessions: [
-      { name: "Steady ride", mins: 40, detail: "40 min, conversational pace", trainerAlt: "40 min steady zone 2 effort on a trainer or gym bike" },
-      { name: "Fuelling practice", mins: 45, detail: "45 min, eat a snack and drink at the 20-min mark", trainerAlt: "45 min on a gym bike, practise eating/drinking mid-session exactly as you would on the trail" },
-      { name: "Longer ride", mins: 60, detail: "60 min mixed terrain, first ride over an hour", trainerAlt: "60 min steady effort on a trainer, break into 3x20 min blocks if that's easier to hold focus" },
+      { name: "Steady ride", mins: 40, detail: "{mins} min, conversational pace", trainerAlt: "{mins} min steady zone 2 effort on a trainer or gym bike" },
+      { name: "Fuelling practice", mins: 45, detail: "{mins} min, eat a snack and drink at the 20-min mark", trainerAlt: "{mins} min on a gym bike, practise eating/drinking mid-session exactly as you would on the trail" },
+      { name: "Longer ride", mins: 60, detail: "{mins} min mixed terrain, first ride over an hour", trainerAlt: "{mins} min steady effort on a trainer, break into 3x20 min blocks if that's easier to hold focus" },
     ],
   },
   {
     title: "Race pace", focus: "Interval efforts, simulate race-length effort",
     sessions: [
-      { name: "Intervals", mins: 35, detail: "35 min with 5x2 min hard-but-controlled, easy spin between", trainerAlt: "35 min on a trainer, 5x2 min at hard effort with 2 min easy spin recovery" },
-      { name: "Easy spin", mins: 25, detail: "25 min recovery, low effort", trainerAlt: "25 min easy spin on a gym bike" },
-      { name: "Race simulation", mins: 50, detail: "50 min at the effort you'd expect to hold in a race", trainerAlt: "50 min steady-hard effort on a trainer, treat it as a genuine time-trial effort" },
+      { name: "Intervals", mins: 35, detail: "{mins} min with 5x2 min hard-but-controlled, easy spin between", trainerAlt: "{mins} min on a trainer, 5x2 min at hard effort with 2 min easy spin recovery" },
+      { name: "Easy spin", mins: 25, detail: "{mins} min recovery, low effort", trainerAlt: "{mins} min easy spin on a gym bike" },
+      { name: "Race simulation", mins: 50, detail: "{mins} min at the effort you'd expect to hold in a race", trainerAlt: "{mins} min steady-hard effort on a trainer, treat it as a genuine time-trial effort" },
     ],
   },
   {
     title: "Course skills", focus: "Ride a real course, practice starts and lines",
     sessions: [
-      { name: "Line choice", mins: 30, detail: "30 min varied terrain, pick the smoothest line, not the fastest", trainerAlt: "No direct trainer equivalent — swap for 20 min video study of a course preview or past race footage" },
-      { name: "Start practice", mins: 20, detail: "20 min, 6x practice starts from a standstill", trainerAlt: "20 min on a trainer, 6x hard 15-second efforts from a dead stop to build start power" },
+      { name: "Line choice", mins: 30, detail: "{mins} min varied terrain, pick the smoothest line, not the fastest", trainerAlt: "No direct trainer equivalent — swap for 20 min video study of a course preview or past race footage" },
+      { name: "Start practice", mins: 20, detail: "{mins} min, 6x practice starts from a standstill", trainerAlt: "{mins} min on a trainer, 6x hard 15-second efforts from a dead stop to build start power" },
       { name: "Course recon", mins: 40, detail: "Ride an actual race course (or similar terrain) at an easy pace", trainerAlt: "No trainer equivalent — this one needs real terrain if at all possible" },
     ],
   },
   {
     title: "Taper", focus: "Short easy spins, rest, kit check",
     sessions: [
-      { name: "Easy spin", mins: 20, detail: "20 min, very easy, legs should feel fresh afterwards", trainerAlt: "20 min very easy spin on a gym bike" },
-      { name: "Kit check", mins: 15, detail: "15 min ride to test bike, tyre pressure, and race-day kit", trainerAlt: "No trainer equivalent — do the kit check on the actual race bike regardless" },
-      { name: "Rest", mins: 15, detail: "Full rest or a gentle 15-min spin only — save your legs for race day", trainerAlt: "Full rest, or 15 min very easy spin on a gym bike if you want to move" },
+      { name: "Easy spin", mins: 20, detail: "{mins} min, very easy, legs should feel fresh afterwards", trainerAlt: "{mins} min very easy spin on a gym bike" },
+      { name: "Kit check", mins: 15, detail: "{mins} min ride to test bike, tyre pressure, and race-day kit", trainerAlt: "No trainer equivalent — do the kit check on the actual race bike regardless" },
+      { name: "Rest", mins: 15, detail: "Full rest or a gentle {mins} min spin only — save your legs for race day", trainerAlt: "Full rest, or {mins} min very easy spin on a gym bike if you want to move" },
     ],
   },
 ];
 
+// How many weeks each phase above occupies in the 12-week plan — more time on
+// the early habit-building phases, less on the later ones. Sums to 12.
+const PHASE_WEEK_COUNTS = [2, 2, 1, 2, 2, 1, 1, 1];
+const TEMPLATE = PHASES.flatMap((phase, i) => Array(PHASE_WEEK_COUNTS[i]).fill(phase));
+
+// Applies a rider's current ±5 min adjustment to a session's duration and
+// substitutes it into the detail/trainerAlt text (never below 5 min).
+function effectiveSession(session, adjustmentMins) {
+  const mins = Math.max(5, session.mins + (adjustmentMins || 0));
+  return {
+    ...session,
+    mins,
+    detail: fillTemplate(session.detail, { mins }),
+    trainerAlt: session.trainerAlt ? fillTemplate(session.trainerAlt, { mins }) : session.trainerAlt,
+  };
+}
+
 // chosenDays.length is 2 or 3. For a 2-day week we use the first and last
 // template session (the lightest and the main ride), skipping the middle one.
+// totalWeeks is always a slice of the front of the 12-week TEMPLATE — a
+// 1-month plan is literally weeks 1-4 of the 3-month plan, not a separately
+// scaled-down version of it.
 function buildProgramme(totalWeeks, chosenDays) {
   const days = chosenDays && chosenDays.length ? chosenDays : ["Tue", "Thu", "Sat"];
   const weeks = [];
-  for (let i = 0; i < totalWeeks; i++) {
-    const srcIdx = Math.round((i * (TEMPLATE.length - 1)) / Math.max(totalWeeks - 1, 1));
-    const src = TEMPLATE[srcIdx];
+  const n = Math.min(totalWeeks, TEMPLATE.length);
+  for (let i = 0; i < n; i++) {
+    const src = TEMPLATE[i];
     const base = days.length === 2 ? [src.sessions[0], src.sessions[2]] : src.sessions;
     const sessions = base.map((s, idx) => ({ ...s, day: days[idx] }));
     weeks.push({
@@ -117,7 +142,7 @@ function buildProgramme(totalWeeks, chosenDays) {
       title: src.title,
       focus: src.focus,
       sessions,
-      elev: Math.round(8 + (i / Math.max(totalWeeks - 1, 1)) * 84),
+      elev: Math.round(8 + (i / Math.max(TEMPLATE.length - 1, 1)) * 84),
     });
   }
   return weeks;
@@ -416,7 +441,7 @@ function weeksBetween(dateStr) {
   const target = new Date(dateStr);
   const now = new Date();
   const days = Math.ceil((target - now) / (1000 * 60 * 60 * 24));
-  return Math.max(4, Math.min(16, Math.round(days / 7)));
+  return Math.max(4, Math.min(12, Math.round(days / 7)));
 }
 
 function dateKey(d) {
@@ -432,7 +457,7 @@ function weekNumberForDate(programStart, date) {
   return Math.floor(diffDays / 7) + 1;
 }
 
-function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLogged, totalSessions, sessionDurations }) {
+function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLogged, totalSessions, sessionDurations, adjustmentMins }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [previewKey, setPreviewKey] = useState(null);
 
@@ -443,7 +468,8 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
       const feeling = sessionLog[key];
       const status = feeling === undefined ? "upcoming" : feeling === "Didn't get to it" ? "skipped" : "done";
       const d = sessionDate(programStart, w.n, s.day);
-      sessionsByDate[dateKey(d)] = { status, name: s.name, detail: s.detail, mins: sessionDurations[key] ?? s.mins };
+      const eff = status === "upcoming" ? effectiveSession(s, adjustmentMins) : s;
+      sessionsByDate[dateKey(d)] = { status, name: s.name, detail: eff.detail, mins: sessionDurations[key] ?? eff.mins };
     });
   });
   const adHocByDate = {};
@@ -593,6 +619,8 @@ export default function SofaToSingletrack() {
   const [badges, setBadges] = useState([]);
   const [sessionLog, setSessionLog] = useState({}); // "wN-i" -> feeling
   const [lastFeeling, setLastFeeling] = useState(null);
+  const [adjustmentMins, setAdjustmentMins] = useState(0);
+  const [adjustWarning, setAdjustWarning] = useState(null);
   const [checkinTarget, setCheckinTarget] = useState(null);
   const [adHocLog, setAdHocLog] = useState([]); // [{ week, at }]
   const [sessionDurations, setSessionDurations] = useState({}); // "wN-i" -> actual mins, from the ride timer
@@ -658,6 +686,7 @@ export default function SofaToSingletrack() {
         if (saved.programStart) setProgramStart(new Date(saved.programStart));
         if (saved.sessionDurations) setSessionDurations(saved.sessionDurations);
         if (saved.activeTimer) setActiveTimer(saved.activeTimer);
+        if (typeof saved.adjustmentMins === "number") setAdjustmentMins(saved.adjustmentMins);
         if (saved.stage && saved.stage !== "checkin") setStage(saved.stage);
       }
     } catch (e) {
@@ -669,12 +698,12 @@ export default function SofaToSingletrack() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), sessionDurations, activeTimer, stage });
+      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), sessionDurations, activeTimer, adjustmentMins, stage });
       localStorage.setItem(STORAGE_KEY, payload);
     } catch (e) {
       // storage unavailable (private browsing, quota) — progress just won't persist
     }
-  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, stage]);
+  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage]);
 
   useEffect(() => { if (stage === "onboarding" && nameRef.current) nameRef.current.focus(); }, [stage, step]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), toastType === "trophy" ? 4200 : 3000); return () => clearTimeout(t); }, [toast, toastType]);
@@ -690,6 +719,7 @@ export default function SofaToSingletrack() {
   );
   const unlogged = allSessions.filter((s) => !(s.key in sessionLog));
   const nextSession = unlogged[0] || null;
+  const nextSessionEffective = nextSession ? effectiveSession(nextSession.session, adjustmentMins) : null;
   const upcoming = unlogged.slice(1, 3);
   const currentWeekN = nextSession ? nextSession.weekN : weeks[weeks.length - 1].n;
   const programmeComplete = unlogged.length === 0;
@@ -809,6 +839,7 @@ export default function SofaToSingletrack() {
 
   const openCheckin = (target) => {
     setCheckinTarget(target);
+    setAdjustWarning(null);
     setStage("checkin");
   };
 
@@ -832,11 +863,43 @@ export default function SofaToSingletrack() {
     if (navigator.vibrate) navigator.vibrate([80, 40, 80]); // Android only — iOS Safari has no Vibration API
   };
 
+  // Difficulty adjustment: every "Tougher than expected" / "Had to stop early"
+  // trims 5 minutes off every session still to come; every "Easier than
+  // expected" adds 5. It keeps compounding report after report (clamped so a
+  // session can never vanish or balloon) until a rider reports "About right",
+  // which resets it back to zero.
+  const ADJUSTMENT_STEP = 5;
+  const ADJUSTMENT_MIN = -15;
+  const ADJUSTMENT_MAX = 15;
+
+  const applyFeelingAdjustment = (feeling) => {
+    if (feeling === "About right") {
+      setAdjustmentMins(0);
+      return null;
+    }
+    if (feeling === "Didn't get to it") return null;
+    const delta = feeling === "Easier than expected" ? ADJUSTMENT_STEP : -ADJUSTMENT_STEP;
+    const next = Math.max(ADJUSTMENT_MIN, Math.min(ADJUSTMENT_MAX, adjustmentMins + delta));
+    setAdjustmentMins(next);
+    return delta > 0 ? "up" : "down";
+  };
+
   const logSession = (target, feeling, { navigate = true } = {}) => {
     const isFirstEver = Object.keys(sessionLog).length === 0;
     const newLog = { ...sessionLog, [target.key]: feeling };
     setSessionLog(newLog);
     setLastFeeling(feeling === "Didn't get to it" ? lastFeeling : feeling);
+
+    // Record what they actually just did, in case they logged manually
+    // without the timer — a real timer reading already sits in
+    // sessionDurations at this point and takes priority over the planned figure.
+    if (feeling !== "Didn't get to it" && !(target.key in sessionDurations)) {
+      const effectiveMins = Math.max(5, target.session.mins + adjustmentMins);
+      setSessionDurations((prev) => ({ ...prev, [target.key]: effectiveMins }));
+    }
+
+    setAdjustWarning(applyFeelingAdjustment(feeling));
+
     const justAwarded = checkAllBadges(newLog, adHocLog);
     if (isFirstEver && !notifAsked) setShowNotifPrompt(true);
 
@@ -875,6 +938,7 @@ export default function SofaToSingletrack() {
   const backToDashboard = () => {
     setCheckinTarget(null);
     setCoachNote("");
+    setAdjustWarning(null);
     setExplainerOpen(false);
     setStage("dashboard");
   };
@@ -1275,7 +1339,7 @@ export default function SofaToSingletrack() {
                 </div>
               )}
               <p style={{ fontSize: 14, color: "#F4F3EF", lineHeight: 1.5, margin: "4px 0 12px" }}>
-                {mode[nextSession.key] === "trainer" && nextSession.session.trainerAlt ? nextSession.session.trainerAlt : nextSession.session.detail}
+                {mode[nextSession.key] === "trainer" && nextSessionEffective.trainerAlt ? nextSessionEffective.trainerAlt : nextSessionEffective.detail}
               </p>
               {nextSession.session.trainerAlt && (
                 <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
@@ -1311,7 +1375,7 @@ export default function SofaToSingletrack() {
               )}
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => openCheckin(nextSession)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Log this session</button>
-                <button onClick={() => downloadSessionICS(nextSession.session, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>+ Cal</button>
+                <button onClick={() => downloadSessionICS(nextSessionEffective, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>+ Cal</button>
                 <button onClick={() => quickSkip(nextSession)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Skip</button>
               </div>
             </div>
@@ -1394,16 +1458,19 @@ export default function SofaToSingletrack() {
               {upcoming.length > 0 && (
                 <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Coming up</div>
-                  {upcoming.map((s, i) => (
-                    <div key={s.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: i < upcoming.length - 1 ? 10 : 0 }}>
-                      <div className="display" style={{ fontSize: 12, color: "#E8792B", minWidth: 30 }}>{s.session.day}</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>{s.session.name}</div>
-                        <div style={{ fontSize: 12.5, color: "#B9BDB8" }}>{s.session.detail}</div>
+                  {upcoming.map((s, i) => {
+                    const eff = effectiveSession(s.session, adjustmentMins);
+                    return (
+                      <div key={s.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: i < upcoming.length - 1 ? 10 : 0 }}>
+                        <div className="display" style={{ fontSize: 12, color: "#E8792B", minWidth: 30 }}>{s.session.day}</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{s.session.name}</div>
+                          <div style={{ fontSize: 12.5, color: "#B9BDB8" }}>{eff.detail}</div>
+                        </div>
+                        <button onClick={() => quickSkip(s)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#7A7E79", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", height: "fit-content" }}>Skip</button>
                       </div>
-                      <button onClick={() => quickSkip(s)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#7A7E79", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", height: "fit-content" }}>Skip</button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1417,6 +1484,7 @@ export default function SofaToSingletrack() {
             totalRidesLogged={Object.keys(sessionLog).filter((k) => sessionLog[k] !== "Didn't get to it").length}
             totalSessions={allSessions.length}
             sessionDurations={sessionDurations}
+            adjustmentMins={adjustmentMins}
           />
 
           <div style={{ background: "#161616", border: "1px solid #2b2b2b", borderRadius: 8, padding: adHocFormOpen ? "14px" : "10px 12px", marginBottom: 16 }}>
@@ -1516,6 +1584,17 @@ export default function SofaToSingletrack() {
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Coach note</div>
                 <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, minHeight: 20 }}>{coachNote}</p>
               </div>
+
+              {adjustWarning && (
+                <div style={{ background: "#161616", border: "1px solid #E8792B", borderRadius: 12, padding: "14px 16px", marginBottom: 20 }}>
+                  <p style={{ margin: 0, fontSize: 13, color: "#F4F3EF", lineHeight: 1.5 }}>
+                    ⚠️ {adjustWarning === "down"
+                      ? "We've trimmed 5 minutes off your sessions from here based on how that felt."
+                      : "We've added 5 minutes to your sessions from here since that felt easier than expected."}
+                    {" "}If you're finding you need this a lot, it's worth a quick chat with a coach rather than adjusting on your own.
+                  </p>
+                </div>
+              )}
 
               {showNotifPrompt && (
                 <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
