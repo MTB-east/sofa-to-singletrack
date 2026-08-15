@@ -170,9 +170,7 @@ const BIKE_CARE_TIPS = [
 const TRAIL_ETIQUETTE_TIPS = [
   "Give way to walkers and horse riders — slow down, say a friendly hello, and pass wide where you can.",
   "Horses can spook easily — slow right down well before you reach them and wait if the rider asks you to.",
-  "Stick to the trail. Cutting corners damages plants and widens erosion for everyone.",
-  "Let other trail users know you're there — a simple \"bike coming through\" is all it takes.",
-  "Leave gates as you find them, whether open or closed.",
+  "Let other trail users know you're there — a simple \"hello\" or \"morning\" as you pass is great.",
   "Take your litter home with you — the trails only stay great if everyone does this.",
   "On narrow trails, riders heading uphill usually have priority — be ready to pull over if you're descending.",
 ];
@@ -182,12 +180,12 @@ const PRE_RIDE_CHECKLIST = [
   "Water bottle or hydration pack",
   "Weather-appropriate layers you can add or remove",
   "Phone, charged, in case you need it",
-  "Tyres — give them a squeeze, they shouldn't feel soft",
+  "Tyres — check the side of the tyre for the correct pressure range",
   "Let someone know roughly where you're riding and when you'll be back",
 ];
 
 const BIKE_SETUP_STEPS = [
-  { title: "Saddle height", body: "Stand next to your bike and set the saddle level with your hip bone. On the bike, your leg should be almost straight — just a slight bend — at the bottom of the pedal stroke. Too low wastes energy and can strain your knees." },
+  { title: "Saddle height", body: "Sit on the saddle and put your heel (with shoes on) on the pedal at its lowest point — your leg should be almost straight, with just a slight bend. If that doesn't feel comfortable straight away, start a little lower and raise it gradually over a few rides." },
   { title: "Tyre pressure", body: "Squeeze the tyre between finger and thumb — it shouldn't feel rock hard or squash flat. Check the pressure range printed on the tyre's sidewall (usually in PSI) and use a pump with a gauge if you have one." },
   { title: "Brakes", body: "Squeeze each lever in turn. The wheel shouldn't spin freely once the brake is held on, and the lever shouldn't pull all the way back to the bar." },
   { title: "Helmet fit", body: "It should sit level on your head, not tipped back. The strap should be snug enough that only one or two fingers fit underneath, and the helmet shouldn't rock forwards, backwards, or side to side." },
