@@ -167,6 +167,140 @@ const BIKE_CARE_TIPS = [
   "Learn the M-check — a two-minute top-to-bottom safety check worth doing before any ride on unfamiliar ground.",
 ];
 
+const TRAIL_ETIQUETTE_TIPS = [
+  "Give way to walkers and horse riders — slow down, say a friendly hello, and pass wide where you can.",
+  "Horses can spook easily — slow right down well before you reach them and wait if the rider asks you to.",
+  "Stick to the trail. Cutting corners damages plants and widens erosion for everyone.",
+  "Let other trail users know you're there — a simple \"bike coming through\" is all it takes.",
+  "Leave gates as you find them, whether open or closed.",
+  "Take your litter home with you — the trails only stay great if everyone does this.",
+  "On narrow trails, riders heading uphill usually have priority — be ready to pull over if you're descending.",
+];
+
+const PRE_RIDE_CHECKLIST = [
+  "Helmet — fitted properly and buckled",
+  "Water bottle or hydration pack",
+  "Weather-appropriate layers you can add or remove",
+  "Phone, charged, in case you need it",
+  "Tyres — give them a squeeze, they shouldn't feel soft",
+  "Let someone know roughly where you're riding and when you'll be back",
+];
+
+const BIKE_SETUP_STEPS = [
+  { title: "Saddle height", body: "Stand next to your bike and set the saddle level with your hip bone. On the bike, your leg should be almost straight — just a slight bend — at the bottom of the pedal stroke. Too low wastes energy and can strain your knees." },
+  { title: "Tyre pressure", body: "Squeeze the tyre between finger and thumb — it shouldn't feel rock hard or squash flat. Check the pressure range printed on the tyre's sidewall (usually in PSI) and use a pump with a gauge if you have one." },
+  { title: "Brakes", body: "Squeeze each lever in turn. The wheel shouldn't spin freely once the brake is held on, and the lever shouldn't pull all the way back to the bar." },
+  { title: "Helmet fit", body: "It should sit level on your head, not tipped back. The strap should be snug enough that only one or two fingers fit underneath, and the helmet shouldn't rock forwards, backwards, or side to side." },
+];
+
+// Terms are matched as plain-text substrings (case-insensitive) inside session
+// copy, longest first, so multi-word terms win over any shorter term nested
+// inside them. Keep entries specific enough to avoid matching unrelated words.
+const GLOSSARY = {
+  "clipping in": "Locking your shoe into a clip-in (clipless) pedal. If you're using flat pedals, this doesn't apply to you — flat pedals are a totally fine way to start.",
+  "figure-of-8s": "Riding a figure-of-eight pattern at slow speed — a simple way to build balance and low-speed bike control.",
+  "singletrack": "A narrow off-road trail, usually wide enough for one rider at a time — the classic mountain-biking trail.",
+  "cadence": "How fast you're pedalling (revolutions per minute). A smooth, comfortable spin is usually better than mashing hard on each stroke.",
+  "zone 2": "A steady, conversational effort — you should be able to talk in short sentences without gasping for breath.",
+  "conversational pace": "An effort easy enough that you could hold a conversation while riding — not a flat-out effort.",
+  "recovery ride": "A short, deliberately easy ride, done to help your legs recover rather than to build fitness.",
+  "corners": "Cornering well is about looking through the bend, leaning the bike (not just your body), and staying relaxed on the bars.",
+  "time-trial": "Riding as hard and steady as you can hold, alone against the clock, rather than racing wheel-to-wheel with others.",
+};
+
+const GLOSSARY_TERMS = Object.keys(GLOSSARY).sort((a, b) => b.length - a.length);
+
+function splitGlossaryText(text) {
+  const lower = text.toLowerCase();
+  const parts = [];
+  let i = 0;
+  while (i < text.length) {
+    const term = GLOSSARY_TERMS.find((t) => lower.startsWith(t, i));
+    if (term) {
+      parts.push({ term, text: text.slice(i, i + term.length) });
+      i += term.length;
+    } else {
+      const last = parts[parts.length - 1];
+      if (last && !last.term) last.text += text[i];
+      else parts.push({ text: text[i] });
+      i += 1;
+    }
+  }
+  return parts;
+}
+
+function GlossaryText({ text }) {
+  const [openTerm, setOpenTerm] = useState(null);
+  const parts = splitGlossaryText(text);
+  return (
+    <>
+      <p style={{ fontSize: 14, color: "#F4F3EF", lineHeight: 1.5, margin: "4px 0 12px" }}>
+        {parts.map((part, i) =>
+          part.term ? (
+            <button key={i} onClick={() => setOpenTerm(openTerm === part.term ? null : part.term)}
+              style={{ background: "none", border: "none", padding: 0, margin: 0, font: "inherit", color: "inherit", textDecoration: "underline dotted", textDecorationColor: "#1B8A82", textUnderlineOffset: "3px", cursor: "pointer" }}>
+              {part.text}
+            </button>
+          ) : (
+            <React.Fragment key={i}>{part.text}</React.Fragment>
+          )
+        )}
+      </p>
+      {openTerm && (
+        <p style={{ fontSize: 12, color: "#1B8A82", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "-6px 0 12px", lineHeight: 1.4 }}>
+          💡 {GLOSSARY[openTerm]}
+        </p>
+      )}
+    </>
+  );
+}
+
+function PreRideChecklist() {
+  const [expanded, setExpanded] = useState(false);
+  const [checked, setChecked] = useState(() => PRE_RIDE_CHECKLIST.map(() => false));
+  const doneCount = checked.filter(Boolean).length;
+  const toggle = (i) => setChecked((c) => c.map((v, idx) => (idx === i ? !v : v)));
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+      <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Before you head out</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: "#7A7E79" }}>{doneCount}/{PRE_RIDE_CHECKLIST.length}</span>
+          <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
+        </span>
+      </button>
+      {expanded && (
+        <div style={{ marginTop: 12 }}>
+          {PRE_RIDE_CHECKLIST.map((item, i) => (
+            <label key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i > 0 ? "1px solid #2b2b2b" : "none", cursor: "pointer" }}>
+              <input type="checkbox" checked={checked[i]} onChange={() => toggle(i)} style={{ width: 16, height: 16, accentColor: "#1B8A82", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: checked[i] ? "#7A7E79" : "#F4F3EF", textDecoration: checked[i] ? "line-through" : "none" }}>{item}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BikeSetupCheck() {
+  const [open, setOpen] = useState(null);
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Quick bike setup check</div>
+      {BIKE_SETUP_STEPS.map((s, i) => (
+        <div key={i} style={{ borderBottom: i < BIKE_SETUP_STEPS.length - 1 ? "1px solid #2b2b2b" : "none" }}>
+          <button onClick={() => setOpen(open === i ? null : i)} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "#F4F3EF", padding: "10px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <span>{s.title}</span>
+            <span style={{ color: "#E8792B", fontSize: 16, flexShrink: 0 }}>{open === i ? "–" : "+"}</span>
+          </button>
+          {open === i && <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#B9BDB8", lineHeight: 1.5 }}>{s.body}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function toICSDate(date) {
   return date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 }
@@ -615,6 +749,7 @@ export default function SofaToSingletrack() {
   const [welcomeNote, setWelcomeNote] = useState("");
   const [tipIndex, setTipIndex] = useState(0);
   const [bikeTipIndex, setBikeTipIndex] = useState(0);
+  const [trailTipIndex, setTrailTipIndex] = useState(0);
   const [programStart, setProgramStart] = useState(new Date());
   const [mode, setMode] = useState({});
   const [bikeCheckDone, setBikeCheckDone] = useState(false);
@@ -1341,9 +1476,10 @@ export default function SofaToSingletrack() {
                   {adjustTag(lastFeeling)}
                 </div>
               )}
-              <p style={{ fontSize: 14, color: "#F4F3EF", lineHeight: 1.5, margin: "4px 0 12px" }}>
-                {mode[nextSession.key] === "trainer" && nextSessionEffective.trainerAlt ? nextSessionEffective.trainerAlt : nextSessionEffective.detail}
-              </p>
+              <GlossaryText
+                key={nextSession.key}
+                text={mode[nextSession.key] === "trainer" && nextSessionEffective.trainerAlt ? nextSessionEffective.trainerAlt : nextSessionEffective.detail}
+              />
               {nextSession.session.trainerAlt && (
                 <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
                   {["outdoor", "trainer"].map((m) => {
@@ -1394,6 +1530,8 @@ export default function SofaToSingletrack() {
               </div>
             </div>
           )}
+
+          <PreRideChecklist />
 
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#1B8A82", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
@@ -1581,6 +1719,14 @@ export default function SofaToSingletrack() {
             <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Bike care tip</div>
             <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{BIKE_CARE_TIPS[bikeTipIndex]}</p>
             <button onClick={() => setBikeTipIndex((i) => (i + 1) % BIKE_CARE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
+          </div>
+
+          <BikeSetupCheck />
+
+          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Trail etiquette</div>
+            <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{TRAIL_ETIQUETTE_TIPS[trailTipIndex]}</p>
+            <button onClick={() => setTrailTipIndex((i) => (i + 1) % TRAIL_ETIQUETTE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
           </div>
 
           <FAQSection />
