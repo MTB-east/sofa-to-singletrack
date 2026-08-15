@@ -921,7 +921,17 @@ export default function SofaToSingletrack() {
       if (raw) {
         const saved = JSON.parse(raw);
         if (saved.profile) setProfile(saved.profile);
-        if (saved.weeks) setWeeks(saved.weeks);
+        if (saved.weeks && saved.weeks.length) {
+          // Rebuild from the canonical PHASES content rather than trusting the
+          // persisted snapshot verbatim — this keeps the rider's exact programme
+          // length and day assignments (fixed at signup) but always picks up
+          // any session-copy/effort/video updates shipped since they started,
+          // instead of freezing them on whatever content existed at signup time.
+          const chosenDays = (saved.profile && saved.profile.chosenDays) || saved.weeks[0].sessions.map((s) => s.day);
+          setWeeks(buildProgramme(saved.weeks.length, chosenDays));
+        } else if (saved.weeks) {
+          setWeeks(saved.weeks);
+        }
         if (saved.sessionLog) setSessionLog(saved.sessionLog);
         if (saved.badges) setBadges(saved.badges);
         if (Array.isArray(saved.adHocLog)) setAdHocLog(saved.adHocLog);
