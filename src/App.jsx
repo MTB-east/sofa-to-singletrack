@@ -1561,6 +1561,16 @@ export default function SofaToSingletrack() {
             </div>
           </div>
 
+          <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Support MTB East</div>
+            <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#B9BDB8", lineHeight: 1.4 }}>This app is free to use. If it's helped you, a donation helps us keep it that way.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              <a href="https://buy.stripe.com/4gMbJ2cXM6jFd1c2uR43S00" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>£5</a>
+              <a href="https://buy.stripe.com/bJeeVe3nc6jFbX81qN43S01" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>£10</a>
+              <a href="https://buy.stripe.com/bJe9AUbTI6jFbX8b1n43S02" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>Choose amount</a>
+            </div>
+          </div>
+
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fuelling tip</div>
             <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{NUTRITION_TIPS[tipIndex]}</p>
