@@ -547,6 +547,31 @@ function formatElapsed(ms) {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+function playTimerAlertSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const beep = (startTime, freq) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.3, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + 0.3);
+    };
+    const now = ctx.currentTime;
+    beep(now, 880);
+    beep(now + 0.35, 880);
+    beep(now + 0.7, 1108.73);
+  } catch (e) {
+    // Web Audio unavailable — vibration/visual alert still fire
+  }
+}
+
 function fillTemplate(str, vars) {
   return str.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : `{${k}}`));
 }
@@ -843,7 +868,9 @@ export default function SofaToSingletrack() {
   const [checkinTarget, setCheckinTarget] = useState(null);
   const [adHocLog, setAdHocLog] = useState([]); // [{ week, at }]
   const [sessionDurations, setSessionDurations] = useState({}); // "wN-i" -> actual mins, from the ride timer
-  const [activeTimer, setActiveTimer] = useState(null); // { key, startedAt } while a ride timer is running
+  const [activeTimer, setActiveTimer] = useState(null); // { key, startedAt, mode, targetMins } while a ride timer is running
+  const [timerMode, setTimerMode] = useState("up"); // "up" | "down" — chosen before starting
+  const [timerAlerted, setTimerAlerted] = useState(false); // has the countdown-complete alert fired yet
   const [nowTick, setNowTick] = useState(Date.now());
   const [notifAsked, setNotifAsked] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);
@@ -932,6 +959,16 @@ export default function SofaToSingletrack() {
     const t = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, [activeTimer]);
+
+  useEffect(() => {
+    if (!activeTimer || activeTimer.mode !== "down" || timerAlerted) return;
+    const remaining = activeTimer.targetMins * 60000 - (nowTick - activeTimer.startedAt);
+    if (remaining <= 0) {
+      setTimerAlerted(true);
+      playTimerAlertSound();
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+    }
+  }, [nowTick, activeTimer, timerAlerted]);
 
   const allSessions = weeks.flatMap((w) =>
     w.sessions.map((s, i) => ({ key: `${w.n}-${i}`, weekN: w.n, idx: i, session: s, weekTitle: w.title }))
@@ -1138,8 +1175,11 @@ export default function SofaToSingletrack() {
     logSession(target, "Didn't get to it", { navigate: false });
   };
 
-  const startRideTimer = (target) => setActiveTimer({ key: target.key, startedAt: Date.now() });
-  const cancelRideTimer = () => setActiveTimer(null);
+  const startRideTimer = (target, targetMins) => {
+    setActiveTimer({ key: target.key, startedAt: Date.now(), mode: timerMode, targetMins });
+    setTimerAlerted(false);
+  };
+  const cancelRideTimer = () => { setActiveTimer(null); setTimerAlerted(false); };
   const finishRideTimer = () => {
     if (!activeTimer) return;
     const elapsedMins = Math.max(1, Math.round((Date.now() - activeTimer.startedAt) / 60000));
@@ -1147,6 +1187,7 @@ export default function SofaToSingletrack() {
     const priorBest = Math.max(0, ...Object.values(sessionDurations));
     setSessionDurations((prev) => ({ ...prev, [key]: elapsedMins }));
     setActiveTimer(null);
+    setTimerAlerted(false);
     if (priorBest > 0 && elapsedMins > priorBest) {
       showToast(`⭐ New personal best! Longest ride yet: ${formatMinutes(elapsedMins)}`, "trophy");
     }
@@ -1353,6 +1394,8 @@ export default function SofaToSingletrack() {
         @keyframes toastPop { 0% { transform: translateX(-50%) scale(0.85); opacity: 0; } 60% { transform: translateX(-50%) scale(1.06); opacity: 1; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
         .toast-pop { animation: toastPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
         @keyframes confettiFall { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(600deg); opacity: 0; } }
+        @keyframes timerAlertPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+        .timer-alert { animation: timerAlertPulse 0.6s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
       `}</style>
       {showSplash && <SplashScreen />}
@@ -1540,7 +1583,7 @@ export default function SofaToSingletrack() {
 
           {!programmeComplete && nextSession && (
             <div style={{ background: "#161616", borderRadius: 14, padding: "20px", marginBottom: 16, border: "2px solid #E8792B", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: -70, right: -70, width: 220, height: 220, borderRadius: "50%", background: "radial-gradient(circle, rgba(232,121,43,0.35) 0%, rgba(232,121,43,0) 70%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", top: -112, right: -112, width: 254, height: 254, borderRadius: "50%", background: "radial-gradient(circle, rgba(232,121,43,0.35) 0%, rgba(232,121,43,0) 70%)", pointerEvents: "none" }} />
               <div style={{ position: "relative" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
                 <div style={{ background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 10, padding: "5px 10px", textAlign: "center", minWidth: 44, flexShrink: 0 }}>
@@ -1607,17 +1650,51 @@ export default function SofaToSingletrack() {
                   </div>
                 </div>
               )}
-              {activeTimer && activeTimer.key === nextSession.key ? (
-                <div style={{ background: "#0d0d0d", borderRadius: 10, padding: "16px", marginBottom: 12, textAlign: "center", border: "1px solid rgb(102, 255, 0)" }}>
-                  <div className="display" style={{ fontSize: 32, color: "#F4F3EF", marginBottom: 10 }}>{formatElapsed(nowTick - activeTimer.startedAt)}</div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
-                    <button onClick={cancelRideTimer} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => startRideTimer(nextSession)} style={{ ...navBtn, background: "rgb(102, 255, 0)", color: "#14171A" }}>▶ Start ride timer</button>
-              )}
+              {(() => {
+                const running = activeTimer && activeTimer.key === nextSession.key;
+                const isDown = running ? activeTimer.mode === "down" : timerMode === "down";
+                const elapsedMs = running ? nowTick - activeTimer.startedAt : 0;
+                const remainingMs = running ? activeTimer.targetMins * 60000 - elapsedMs : 0;
+                const overtime = running && isDown && remainingMs <= 0;
+                return (
+                  <>
+                    {!running && (
+                      <div style={{ display: "flex", gap: 6, marginBottom: 10, justifyContent: "center" }}>
+                        {["up", "down"].map((m) => {
+                          const active = timerMode === m;
+                          return (
+                            <button key={m} onClick={() => setTimerMode(m)}
+                              style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 10px", borderRadius: 5, border: "1px solid " + (active ? "rgb(102,255,0)" : "#2b2b2b"), background: active ? "rgba(102,255,0,0.12)" : "#0d0d0d", color: active ? "rgb(102,255,0)" : "#B9BDB8", cursor: "pointer" }}>
+                              {m === "up" ? "⏱ Count up" : "⏳ Count down"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div
+                      className={overtime ? "timer-alert" : undefined}
+                      style={{ background: "#0d0d0d", borderRadius: 10, padding: "14px", marginBottom: 12, textAlign: "center", border: "1px solid " + (overtime ? "#E24B4A" : "rgb(102, 255, 0)") }}
+                    >
+                      <div style={{ fontSize: 10, fontWeight: 700, color: overtime ? "#E24B4A" : "#7A7E79", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+                        {overtime ? "Time's up!" : isDown ? "Time left" : "Elapsed"}
+                      </div>
+                      <div className="display" style={{ fontSize: 32, color: overtime ? "#E24B4A" : "#F4F3EF" }}>
+                        {!running
+                          ? isDown ? formatElapsed(nextSessionEffective.mins * 60000) : "0:00"
+                          : overtime ? `+${formatElapsed(Math.abs(remainingMs))}` : formatElapsed(isDown ? remainingMs : elapsedMs)}
+                      </div>
+                    </div>
+                    {running ? (
+                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                        <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
+                        <button onClick={cancelRideTimer} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => startRideTimer(nextSession, nextSessionEffective.mins)} style={{ ...navBtn, background: "rgb(102, 255, 0)", color: "#14171A" }}>▶ Start ride timer</button>
+                    )}
+                  </>
+                );
+              })()}
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => openCheckin(nextSession)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Log this session</button>
                 <button onClick={() => downloadSessionICS(nextSessionEffective, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>+ Cal</button>
