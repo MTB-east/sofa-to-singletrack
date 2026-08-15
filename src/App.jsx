@@ -281,10 +281,10 @@ function PreRideChecklist() {
   );
 }
 
-function BikeSetupCheck() {
+function BikeSetupCheck({ bordered = true }) {
   const [open, setOpen] = useState(null);
-  return (
-    <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+  const content = (
+    <>
       <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Quick bike setup check</div>
       {BIKE_SETUP_STEPS.map((s, i) => (
         <div key={i} style={{ borderBottom: i < BIKE_SETUP_STEPS.length - 1 ? "1px solid #2b2b2b" : "none" }}>
@@ -295,6 +295,12 @@ function BikeSetupCheck() {
           {open === i && <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#B9BDB8", lineHeight: 1.5 }}>{s.body}</p>}
         </div>
       ))}
+    </>
+  );
+  if (!bordered) return content;
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+      {content}
     </div>
   );
 }
@@ -406,12 +412,12 @@ const FAQS = [
   { q: "What if I decide I never want to race or ride difficult trails?", a: "You have still succeeded. Sofa to Singletrack is about opening up cycling, not pushing everyone into the same outcome. If you finish fitter, happier, more confident on a bike, and able to enjoy the rides you choose, the programme has done its job." },
 ];
 
-function FAQSection() {
+function FAQSection({ bordered = true }) {
   const [open, setOpen] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? FAQS : FAQS.slice(0, 3);
-  return (
-    <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginTop: 16, border: "1px solid #2b2b2b", position: "relative", zIndex: 1 }}>
+  const content = (
+    <>
       <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Common questions</div>
       <div style={{ position: "relative" }}>
         {visible.map((f, i) => (
@@ -430,6 +436,57 @@ function FAQSection() {
       <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", textAlign: "center", background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: "10px 0 0" }}>
         {expanded ? "Show less ↑" : `Read more (${FAQS.length - 3} more) ↓`}
       </button>
+    </>
+  );
+  if (!bordered) return content;
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginTop: 16, border: "1px solid #2b2b2b", position: "relative", zIndex: 1 }}>
+      {content}
+    </div>
+  );
+}
+
+function TipsAndAdvice() {
+  const [expanded, setExpanded] = useState(false);
+  const [tipIndex, setTipIndex] = useState(0);
+  const [bikeTipIndex, setBikeTipIndex] = useState(0);
+  const [trailTipIndex, setTrailTipIndex] = useState(0);
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+      <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Tips & advice</span>
+        <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
+      </button>
+      {!expanded && (
+        <p style={{ margin: "10px 0 0", fontSize: 12, color: "#7A7E79", lineHeight: 1.4 }}>Fuelling, bike care, trail etiquette, bike setup, and common questions</p>
+      )}
+      {expanded && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fuelling tip</div>
+          <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{NUTRITION_TIPS[tipIndex]}</p>
+          <button onClick={() => setTipIndex((i) => (i + 1) % NUTRITION_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
+
+          <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Bike care tip</div>
+          <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{BIKE_CARE_TIPS[bikeTipIndex]}</p>
+          <button onClick={() => setBikeTipIndex((i) => (i + 1) % BIKE_CARE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
+
+          <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Trail etiquette</div>
+          <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{TRAIL_ETIQUETTE_TIPS[trailTipIndex]}</p>
+          <button onClick={() => setTrailTipIndex((i) => (i + 1) % TRAIL_ETIQUETTE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
+
+          <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+
+          <BikeSetupCheck bordered={false} />
+
+          <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+
+          <FAQSection bordered={false} />
+        </div>
+      )}
     </div>
   );
 }
@@ -745,9 +802,6 @@ export default function SofaToSingletrack() {
   const [weeks, setWeeks] = useState(buildProgramme(8, ["Tue", "Thu", "Sat"]));
   const [coachNote, setCoachNote] = useState("");
   const [welcomeNote, setWelcomeNote] = useState("");
-  const [tipIndex, setTipIndex] = useState(0);
-  const [bikeTipIndex, setBikeTipIndex] = useState(0);
-  const [trailTipIndex, setTrailTipIndex] = useState(0);
   const [programStart, setProgramStart] = useState(new Date());
   const [mode, setMode] = useState({});
   const [bikeCheckDone, setBikeCheckDone] = useState(false);
@@ -1707,27 +1761,7 @@ export default function SofaToSingletrack() {
             </div>
           </div>
 
-          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fuelling tip</div>
-            <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{NUTRITION_TIPS[tipIndex]}</p>
-            <button onClick={() => setTipIndex((i) => (i + 1) % NUTRITION_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
-          </div>
-
-          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Bike care tip</div>
-            <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{BIKE_CARE_TIPS[bikeTipIndex]}</p>
-            <button onClick={() => setBikeTipIndex((i) => (i + 1) % BIKE_CARE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
-          </div>
-
-          <BikeSetupCheck />
-
-          <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Trail etiquette</div>
-            <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{TRAIL_ETIQUETTE_TIPS[trailTipIndex]}</p>
-            <button onClick={() => setTrailTipIndex((i) => (i + 1) % TRAIL_ETIQUETTE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
-          </div>
-
-          <FAQSection />
+          <TipsAndAdvice />
         </div>
       )}
 
