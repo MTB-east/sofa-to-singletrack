@@ -879,6 +879,8 @@ export default function SofaToSingletrack() {
   const [lastActivityAt, setLastActivityAt] = useState(null); // ms epoch of the last logged/ad-hoc ride
   const [comebackNudgeShown, setComebackNudgeShown] = useState(false); // has the one-time "miss you" banner ever fired
   const [showComebackNudge, setShowComebackNudge] = useState(false);
+  const [raceOfferShown, setRaceOfferShown] = useState(false); // has the one-time race-discount banner ever fired
+  const [showRaceOffer, setShowRaceOffer] = useState(false);
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [toastType, setToastType] = useState("info"); // "info" | "trophy"
@@ -959,6 +961,14 @@ export default function SofaToSingletrack() {
           setShowComebackNudge(true);
         }
         setComebackNudgeShown(alreadyShown || (!!baseline && saved.stage === "dashboard" && Date.now() - baseline >= 14 * 24 * 60 * 60 * 1000));
+
+        // One-time "fancy a race?" nudge — fires once someone is 2+ weeks into
+        // their programme, then never again regardless of how long they stick around.
+        const raceAlreadyShown = !!saved.raceOfferShown;
+        const startMs = saved.programStart ? new Date(saved.programStart).getTime() : null;
+        const raceEligible = !!startMs && saved.stage === "dashboard" && Date.now() - startMs >= 14 * 24 * 60 * 60 * 1000;
+        if (!raceAlreadyShown && raceEligible) setShowRaceOffer(true);
+        setRaceOfferShown(raceAlreadyShown || raceEligible);
       }
     } catch (e) {
       // no saved progress yet, or storage unavailable
@@ -969,12 +979,12 @@ export default function SofaToSingletrack() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown });
+      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown });
       localStorage.setItem(STORAGE_KEY, payload);
     } catch (e) {
       // storage unavailable (private browsing, quota) — progress just won't persist
     }
-  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown]);
+  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
 
   useEffect(() => { if (stage === "onboarding" && nameRef.current) nameRef.current.focus(); }, [stage, step]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), toastType === "trophy" ? 4200 : 3000); return () => clearTimeout(t); }, [toast, toastType]);
@@ -1004,6 +1014,8 @@ export default function SofaToSingletrack() {
   const upcoming = unlogged.slice(1, 3);
   const currentWeekN = nextSession ? nextSession.weekN : weeks[weeks.length - 1].n;
   const programmeComplete = unlogged.length === 0;
+  const programEndDate = new Date(programStart.getTime() + weeks.length * 7 * 24 * 60 * 60 * 1000);
+  const nextRelevantRace = MTB_EAST_RACES.find((r) => new Date(r.date) > programEndDate);
 
   // A week counts as "engaged" if it has at least one real (non-skip) session log,
   // or an ad-hoc ride logged during it. Streak = consecutive engaged weeks counting
@@ -1113,6 +1125,12 @@ export default function SofaToSingletrack() {
     const first = weeks[0].sessions[0];
     const welcomeTemplate = COACH_SCENARIOS.welcome || "Welcome aboard, {name} — your first session, {sessionName}, is a gentle one on purpose.";
     setWelcomeNote(fillTemplate(welcomeTemplate, { name: profile.name || "rider", sessionName: first.name }));
+    // The only place "have you ridden off-road before?" actually feeds into the
+    // plan — an already-regular rider starts one difficulty step up rather than
+    // at the same baseline as someone brand new, using the same ±5 min lever
+    // the feel-based check-ins use later. Deliberately not forking the plan
+    // itself, which stays the one canonical schedule for everyone.
+    if (profile.experience === "Ridden regularly, never raced") setAdjustmentMins(ADJUSTMENT_STEP);
   };
 
   const openCheckin = (target) => {
@@ -1616,6 +1634,20 @@ export default function SofaToSingletrack() {
                 <div style={{ fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>It's been a couple of weeks — no pressure, jump back in whenever you're ready.</div>
               </div>
               <button onClick={() => setShowComebackNudge(false)} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#868A85", fontSize: 20, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0 }}>×</button>
+            </div>
+          )}
+
+          {showRaceOffer && nextRelevantRace && (
+            <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "1px solid #E8792B", display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">🏁</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Fancy trying a race?</div>
+                <div style={{ fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>
+                  You've got the base fitness now. Enter the <strong>Fun category</strong> at <strong>{nextRelevantRace.name}</strong>, {nextRelevantRace.venue} ({new Date(nextRelevantRace.date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}) — use code <strong>FUNRIDE10</strong> for a discount.
+                </div>
+                <a href="https://www.mtbeast.co.uk" target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 6, fontSize: 12.5, fontWeight: 600, color: "#E8792B", textDecoration: "none" }}>See the race calendar →</a>
+              </div>
+              <button onClick={() => setShowRaceOffer(false)} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#868A85", fontSize: 20, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0 }}>×</button>
             </div>
           )}
 
