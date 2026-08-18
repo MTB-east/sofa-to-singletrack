@@ -37,9 +37,11 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // One canonical 3-month (12-week) plan. Shorter programmes (1 or 2 months)
 // just use the first 4 or 8 weeks of this same plan rather than a separately
-// scaled version — see buildProgramme below. Session detail/trainerAlt text
-// uses a {mins} placeholder so the duration can shift with a rider's ±5 min
+// scaled version — see buildProgramme below. Session detail text uses a
+// {mins} placeholder so the duration can shift with a rider's ±5 min
 // difficulty adjustment (see applyFeelingAdjustment) without rewriting copy.
+// Sessions work equally well outdoors or on an indoor trainer/gym bike —
+// there's no separate indoor variant, riders are told this once at signup.
 // Add a `video: "<YouTube video ID>"` field to any session below to swap its
 // "coming soon" placeholder for a real thumbnail linking out to YouTube —
 // the ID is the part after ?v= in the video's URL. Leave it off for now.
@@ -47,65 +49,65 @@ const PHASES = [
   {
     title: "Off the sofa", focus: "Short flat rides, get comfortable on the bike",
     sessions: [
-      { name: "Easy spin", mins: 20, effort: "low", detail: "{mins} min, flat path, stay seated, get used to the bike", trainerAlt: "{mins} min on a trainer/gym bike, easy spin, no resistance changes — just get used to pedalling rhythm" },
-      { name: "Easy spin", mins: 20, effort: "low", detail: "{mins} min, flat path, practice looking up rather than at the front wheel", trainerAlt: "{mins} min easy spin on a gym bike, focus on relaxed shoulders and hands" },
-      { name: "Steady ride", mins: 30, effort: "low", detail: "{mins} min, flat/gentle terrain, 2–3 stops to practice clipping in/out", trainerAlt: "{mins} min steady effort on a trainer, low resistance, no drills needed" },
+      { name: "Easy spin", mins: 20, effort: "low", detail: "{mins} min, flat path, stay seated, get used to the bike" },
+      { name: "Easy spin", mins: 20, effort: "low", detail: "{mins} min, flat path, practice looking up rather than at the front wheel" },
+      { name: "Steady ride", mins: 30, effort: "low", detail: "{mins} min, flat/gentle terrain, 2–3 stops to practice clipping in/out" },
     ],
   },
   {
     title: "Finding balance", focus: "Basic bike handling: braking, cornering, body position",
     sessions: [
-      { name: "Handling drills", mins: 25, effort: "low", detail: "{mins} min: figure-of-8s in a car park or field, slow-speed balance", trainerAlt: "No direct trainer equivalent — swap for 20 min core/balance work (planks, single-leg stands)" },
-      { name: "Braking practice", mins: 25, effort: "med", detail: "{mins} min flat ride, 8x practice stops — front/rear brake balance", trainerAlt: "{mins} min on a trainer, alternate 2 min seated / 1 min standing efforts to build bike-handling strength" },
-      { name: "Easy trail ride", mins: 35, effort: "low", detail: "{mins} min gentle wide singletrack, focus on body position on corners", trainerAlt: "{mins} min steady spin on a gym bike, moderate resistance" },
+      { name: "Handling drills", mins: 25, effort: "low", detail: "{mins} min: figure-of-8s in a car park or field, slow-speed balance" },
+      { name: "Braking practice", mins: 25, effort: "med", detail: "{mins} min flat ride, 8x practice stops — front/rear brake balance" },
+      { name: "Easy trail ride", mins: 35, effort: "low", detail: "{mins} min gentle wide singletrack, focus on body position on corners" },
     ],
   },
   {
     title: "First climbs", focus: "Gentle gradients, gear selection, pacing",
     sessions: [
-      { name: "Gear practice", mins: 25, effort: "low", detail: "{mins} min flat, shift before (not during) short rises", trainerAlt: "{mins} min on a trainer practising smooth gear changes under light load" },
-      { name: "Easy spin", mins: 25, effort: "low", detail: "{mins} min recovery ride, low effort", trainerAlt: "{mins} min easy spin on a gym bike, very light resistance" },
-      { name: "Hill intro", mins: 40, effort: "med", detail: "{mins} min incl. 3x short gentle climbs, walk anything too steep", trainerAlt: "{mins} min on a trainer, 3x5 min at raised resistance simulating a climb, easy spin between" },
+      { name: "Gear practice", mins: 25, effort: "low", detail: "{mins} min flat, shift before (not during) short rises" },
+      { name: "Easy spin", mins: 25, effort: "low", detail: "{mins} min recovery ride, low effort" },
+      { name: "Hill intro", mins: 40, effort: "med", detail: "{mins} min incl. 3x short gentle climbs, walk anything too steep" },
     ],
   },
   {
     title: "Rolling terrain", focus: "Mixed surface rides, short technical sections",
     sessions: [
-      { name: "Mixed terrain", mins: 35, effort: "med", detail: "{mins} min, alternate gravel and packed dirt", trainerAlt: "{mins} min steady effort on a gym bike, varying cadence every 5 min" },
-      { name: "Skills session", mins: 25, effort: "low", detail: "{mins} min, small roots/ruts at walking pace, practice weighting pedals", trainerAlt: "No direct trainer equivalent — swap for 20 min leg strength (squats, step-ups)" },
-      { name: "Rolling ride", mins: 45, effort: "med", detail: "{mins} min rolling singletrack, no time pressure", trainerAlt: "{mins} min on a trainer, gently varying resistance to mimic rolling terrain" },
+      { name: "Mixed terrain", mins: 35, effort: "med", detail: "{mins} min, alternate gravel and packed dirt" },
+      { name: "Skills session", mins: 25, effort: "low", detail: "{mins} min, small roots/ruts at walking pace, practice weighting pedals" },
+      { name: "Rolling ride", mins: 45, effort: "med", detail: "{mins} min rolling singletrack, no time pressure" },
     ],
   },
   {
     title: "Building endurance", focus: "Longer rides, fuelling practice on the bike",
     sessions: [
-      { name: "Steady ride", mins: 40, effort: "med", detail: "{mins} min, conversational pace", trainerAlt: "{mins} min steady zone 2 effort on a trainer or gym bike" },
-      { name: "Fuelling practice", mins: 45, effort: "med", detail: "{mins} min, eat a snack and drink at the 20-min mark", trainerAlt: "{mins} min on a gym bike, practise eating/drinking mid-session exactly as you would on the trail" },
-      { name: "Longer ride", mins: 60, effort: "high", detail: "{mins} min mixed terrain, first ride over an hour", trainerAlt: "{mins} min steady effort on a trainer, break into 3x20 min blocks if that's easier to hold focus" },
+      { name: "Steady ride", mins: 40, effort: "med", detail: "{mins} min, conversational pace" },
+      { name: "Fuelling practice", mins: 45, effort: "med", detail: "{mins} min, eat a snack and drink at the 20-min mark" },
+      { name: "Longer ride", mins: 60, effort: "high", detail: "{mins} min mixed terrain, first ride over an hour" },
     ],
   },
   {
     title: "Race pace", focus: "Interval efforts, simulate race-length effort",
     sessions: [
-      { name: "Intervals", mins: 35, effort: "high", detail: "{mins} min with 5x2 min hard-but-controlled, easy spin between", trainerAlt: "{mins} min on a trainer, 5x2 min at hard effort with 2 min easy spin recovery" },
-      { name: "Easy spin", mins: 25, effort: "low", detail: "{mins} min recovery, low effort", trainerAlt: "{mins} min easy spin on a gym bike" },
-      { name: "Race simulation", mins: 50, effort: "high", detail: "{mins} min at the effort you'd expect to hold in a race", trainerAlt: "{mins} min steady-hard effort on a trainer, treat it as a genuine time-trial effort" },
+      { name: "Intervals", mins: 35, effort: "high", detail: "{mins} min with 5x2 min hard-but-controlled, easy spin between" },
+      { name: "Easy spin", mins: 25, effort: "low", detail: "{mins} min recovery, low effort" },
+      { name: "Race simulation", mins: 50, effort: "high", detail: "{mins} min at the effort you'd expect to hold in a race" },
     ],
   },
   {
     title: "Course skills", focus: "Ride a real course, practice starts and lines",
     sessions: [
-      { name: "Line choice", mins: 30, effort: "med", detail: "{mins} min varied terrain, pick the smoothest line, not the fastest", trainerAlt: "No direct trainer equivalent — swap for 20 min video study of a course preview or past race footage" },
-      { name: "Start practice", mins: 20, effort: "high", detail: "{mins} min, 6x practice starts from a standstill", trainerAlt: "{mins} min on a trainer, 6x hard 15-second efforts from a dead stop to build start power" },
-      { name: "Course recon", mins: 40, effort: "low", detail: "Ride an actual race course (or similar terrain) at an easy pace", trainerAlt: "No trainer equivalent — this one needs real terrain if at all possible" },
+      { name: "Line choice", mins: 30, effort: "med", detail: "{mins} min varied terrain, pick the smoothest line, not the fastest" },
+      { name: "Start practice", mins: 20, effort: "high", detail: "{mins} min, 6x practice starts from a standstill" },
+      { name: "Course recon", mins: 40, effort: "low", detail: "Ride an actual race course (or similar terrain) at an easy pace" },
     ],
   },
   {
     title: "Taper", focus: "Short easy spins, rest, kit check",
     sessions: [
-      { name: "Easy spin", mins: 20, effort: "low", detail: "{mins} min, very easy, legs should feel fresh afterwards", trainerAlt: "{mins} min very easy spin on a gym bike" },
-      { name: "Kit check", mins: 15, effort: "low", detail: "{mins} min ride to test bike, tyre pressure, and race-day kit", trainerAlt: "No trainer equivalent — do the kit check on the actual race bike regardless" },
-      { name: "Rest", mins: 15, effort: "low", detail: "Full rest or a gentle {mins} min spin only — save your legs for race day", trainerAlt: "Full rest, or {mins} min very easy spin on a gym bike if you want to move" },
+      { name: "Easy spin", mins: 20, effort: "low", detail: "{mins} min, very easy, legs should feel fresh afterwards" },
+      { name: "Kit check", mins: 15, effort: "low", detail: "{mins} min ride to test bike, tyre pressure, and race-day kit" },
+      { name: "Rest", mins: 15, effort: "low", detail: "Full rest or a gentle {mins} min spin only — save your legs for race day" },
     ],
   },
 ];
@@ -145,14 +147,13 @@ const PHASE_WEEK_COUNTS = [2, 2, 1, 2, 2, 1, 1, 1];
 const TEMPLATE = PHASES.flatMap((phase, i) => Array(PHASE_WEEK_COUNTS[i]).fill(phase));
 
 // Applies a rider's current ±5 min adjustment to a session's duration and
-// substitutes it into the detail/trainerAlt text (never below 5 min).
+// substitutes it into the detail text (never below 5 min).
 function effectiveSession(session, adjustmentMins) {
   const mins = Math.max(5, session.mins + (adjustmentMins || 0));
   return {
     ...session,
     mins,
     detail: fillTemplate(session.detail, { mins }),
-    trainerAlt: session.trainerAlt ? fillTemplate(session.trainerAlt, { mins }) : session.trainerAlt,
   };
 }
 
@@ -857,7 +858,6 @@ export default function SofaToSingletrack() {
   const [coachNote, setCoachNote] = useState("");
   const [welcomeNote, setWelcomeNote] = useState("");
   const [programStart, setProgramStart] = useState(new Date());
-  const [mode, setMode] = useState({});
   const [bikeCheckDone, setBikeCheckDone] = useState(false);
   const [fitnessConfirmed, setFitnessConfirmed] = useState(false);
   const [badges, setBadges] = useState([]);
@@ -1069,9 +1069,6 @@ export default function SofaToSingletrack() {
 
     const totalMins = allSessions.reduce((sum, s) => sum + (log[s.key] && log[s.key] !== "Didn't get to it" ? (sessionDurations[s.key] ?? s.session.mins) : 0), 0);
     if (totalMins >= 300) candidates.push("5 hours ridden");
-
-    const hasOutdoorRide = allSessions.some((s) => log[s.key] && log[s.key] !== "Didn't get to it" && mode[s.key] !== "trainer");
-    if (hasOutdoorRide) candidates.push("First outdoor ride");
 
     const engagedInSnapshot = (weekN) => {
       const hasStructured = weeks.find((w) => w.n === weekN)?.sessions.some((_, i) => log[`${weekN}-${i}`] && log[`${weekN}-${i}`] !== "Didn't get to it");
@@ -1570,6 +1567,9 @@ export default function SofaToSingletrack() {
                 <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>
                   {weeks.length} weeks, {profile.sessionsPerWeek} sessions a week ({profile.chosenDays.join("/")}){profile.planType === "race" && selectedRace ? <> — with the option to race at <strong>{selectedRace.name}</strong>, {selectedRace.venue}</> : <> — no race pressure, just building the habit</>}.
                 </p>
+                <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "#B9BDB8", lineHeight: 1.5 }}>
+                  Every session works just as well outdoors on the trail or indoors on a turbo trainer / gym bike — same time, same effort, whichever suits you that day.
+                </p>
               </div>
 
               <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 14, border: "1px solid #2b2b2b" }}>
@@ -1652,24 +1652,7 @@ export default function SofaToSingletrack() {
                   {adjustTag(lastFeeling)}
                 </div>
               )}
-              <GlossaryText
-                key={nextSession.key}
-                text={mode[nextSession.key] === "trainer" && nextSessionEffective.trainerAlt ? nextSessionEffective.trainerAlt : nextSessionEffective.detail}
-              />
-              {nextSession.session.trainerAlt && (
-                <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                  {["outdoor", "trainer"].map((m) => {
-                    const active = (mode[nextSession.key] || "outdoor") === m;
-                    const activeColor = m === "outdoor" ? "#E8792B" : "#1B8A82";
-                    return (
-                      <button key={m} onClick={() => setMode({ ...mode, [nextSession.key]: m })}
-                        style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 10px", borderRadius: 5, border: "1px solid " + (active ? activeColor : "#2b2b2b"), background: active ? activeColor : "#0d0d0d", color: active ? "#fff" : "#B9BDB8", cursor: "pointer" }}>
-                        {m === "outdoor" ? "Outdoor / Trail" : "Indoor / Gym or trainer bike"}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              <GlossaryText key={nextSession.key} text={nextSessionEffective.detail} />
               {nextSessionEffective.video ? (
                 <a href={`https://www.youtube.com/watch?v=${nextSessionEffective.video}`} target="_blank" rel="noopener noreferrer"
                   style={{ display: "flex", alignItems: "center", gap: 10, background: "#0d0d0d", borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: "1px solid #2b2b2b", textDecoration: "none" }}>
