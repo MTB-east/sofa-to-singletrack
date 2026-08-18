@@ -134,7 +134,7 @@ function EffortDots({ effort }) {
           <span key={n} style={{ width: 6, height: 6, borderRadius: "50%", background: n <= meta.level ? meta.color : "#3a3a3a" }} />
         ))}
       </div>
-      <span style={{ fontSize: 11, fontWeight: 600, color: meta.color }}>{meta.label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: meta.color }}>{meta.label}</span>
     </div>
   );
 }
@@ -274,7 +274,7 @@ function GlossaryText({ text }) {
         )}
       </p>
       {openTerm && (
-        <p style={{ fontSize: 12, color: "#1B8A82", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "-6px 0 12px", lineHeight: 1.4 }}>
+        <p style={{ fontSize: 13, color: "#1B8A82", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "-6px 0 12px", lineHeight: 1.4 }}>
           💡 {GLOSSARY[openTerm]}
         </p>
       )}
@@ -292,7 +292,7 @@ function PreRideChecklist() {
       <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Before you head out</span>
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11.5, color: "#7A7E79" }}>{doneCount}/{PRE_RIDE_CHECKLIST.length}</span>
+          <span style={{ fontSize: 11.5, color: "#868A85" }}>{doneCount}/{PRE_RIDE_CHECKLIST.length}</span>
           <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
         </span>
       </button>
@@ -301,7 +301,7 @@ function PreRideChecklist() {
           {PRE_RIDE_CHECKLIST.map((item, i) => (
             <label key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i > 0 ? "1px solid #2b2b2b" : "none", cursor: "pointer" }}>
               <input type="checkbox" checked={checked[i]} onChange={() => toggle(i)} style={{ width: 16, height: 16, accentColor: "#1B8A82", flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: checked[i] ? "#7A7E79" : "#F4F3EF", textDecoration: checked[i] ? "line-through" : "none" }}>{item}</span>
+              <span style={{ fontSize: 13, color: checked[i] ? "#868A85" : "#F4F3EF", textDecoration: checked[i] ? "line-through" : "none" }}>{item}</span>
             </label>
           ))}
         </div>
@@ -405,7 +405,7 @@ function AppHeader() {
     <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 20px", borderBottom: "1px solid #1c1c1c" }}>
       <img src="/brand/header-mark.png" alt="" width={24} height={24} style={{ display: "block" }} />
       <span className="display" style={{ fontSize: 13, letterSpacing: "0.08em", color: "#F4F3EF" }}>SOFA TO SINGLETRACK</span>
-      <span style={{ fontSize: 10, color: "#B9BDB8", fontWeight: 600 }}>· MTB EAST</span>
+      <span style={{ fontSize: 11, color: "#B9BDB8", fontWeight: 600 }}>· MTB EAST</span>
     </div>
   );
 }
@@ -487,7 +487,7 @@ function TipsAndAdvice() {
         <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
       </button>
       {!expanded && (
-        <p style={{ margin: "10px 0 0", fontSize: 12, color: "#7A7E79", lineHeight: 1.4 }}>Fuelling, bike care, trail etiquette, bike setup, and common questions</p>
+        <p style={{ margin: "10px 0 0", fontSize: 12, color: "#868A85", lineHeight: 1.4 }}>Fuelling, bike care, trail etiquette, bike setup, and common questions</p>
       )}
       {expanded && (
         <div style={{ marginTop: 14 }}>
@@ -757,9 +757,9 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
 
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
         {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-          <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 700, color: "#5c5f5c" }}>{d}</div>
+          <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "#868A85" }}>{d}</div>
         ))}
-        <div style={{ width: 34, textAlign: "center", fontSize: 9, fontWeight: 700, color: "#5c5f5c" }}>TIME</div>
+        <div style={{ width: 34, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: "#868A85" }}>TIME</div>
       </div>
 
       {rows.map((row, ri) => {
@@ -789,7 +789,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                     onClick={() => hasPreviewContent && setPreviewKey((cur) => (cur === k ? null : k))}
                     style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "3px 0", borderRadius: 6, border: isToday ? "1px solid #E8792B" : "1px solid transparent", cursor: hasPreviewContent ? "pointer" : "default" }}
                   >
-                    <span style={{ fontSize: 11, color: "#F4F3EF" }}>{d.getDate()}</span>
+                    <span style={{ fontSize: 12, color: "#F4F3EF" }}>{d.getDate()}</span>
                     <div style={{ display: "flex", gap: 2 }}>
                       {info && (
                         <div style={{ width: 5, height: 5, borderRadius: "50%", background: info.status === "skipped" ? "transparent" : dotColor[info.status], border: info.status === "skipped" ? "1px solid #5c5f5c" : "none" }} />
@@ -801,14 +801,14 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                     <div style={{ position: "absolute", zIndex: 20, bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 6, width: 160, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 8, padding: "8px 10px", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}>
                       {info && (
                         <>
-                          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#E8792B", marginBottom: 2 }}>{info.name}</div>
-                          <div style={{ fontSize: 10.5, color: "#B9BDB8", lineHeight: 1.4 }}>{info.detail}</div>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#E8792B", marginBottom: 2 }}>{info.name}</div>
+                          <div style={{ fontSize: 11.5, color: "#B9BDB8", lineHeight: 1.4 }}>{info.detail}</div>
                         </>
                       )}
                       {hasAdHoc && adHocForDay.map((r, i) => (
                         <div key={i} style={{ marginTop: info || i > 0 ? 6 : 0 }}>
-                          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#FFD400" }}>Extra ride{r.mins ? ` — ${r.mins}m` : ""}</div>
-                          {r.feeling && <div style={{ fontSize: 10.5, color: "#B9BDB8", lineHeight: 1.4 }}>{r.feeling}</div>}
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#FFD400" }}>Extra ride{r.mins ? ` — ${r.mins}m` : ""}</div>
+                          {r.feeling && <div style={{ fontSize: 11.5, color: "#B9BDB8", lineHeight: 1.4 }}>{r.feeling}</div>}
                         </div>
                       ))}
                     </div>
@@ -816,20 +816,20 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                 </div>
               );
             })}
-            <div style={{ width: 34, textAlign: "center", fontSize: 10.5, fontWeight: 600, color: rowMins > 0 ? "#1B8A82" : "#3a3d3a" }}>
+            <div style={{ width: 34, textAlign: "center", fontSize: 11.5, fontWeight: 600, color: rowMins > 0 ? "#1B8A82" : "#3a3d3a" }}>
               {rowMins > 0 ? `${rowMins}m` : "–"}
             </div>
           </div>
         );
       })}
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 10.5, color: "#B9BDB8", marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11.5, color: "#B9BDB8", marginTop: 8 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#1B8A82", display: "inline-block" }} /> Done</span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", border: "1px solid #5c5f5c", display: "inline-block" }} /> Skipped</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", border: "1px solid #868A85", display: "inline-block" }} /> Skipped</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#E8792B", display: "inline-block" }} /> Upcoming</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FFD400", display: "inline-block" }} /> Extra ride</span>
       </div>
-      <p style={{ fontSize: 10, color: "#5c5f5c", margin: "8px 0 0" }}>Tap or hover a session dot for a quick preview.</p>
+      <p style={{ fontSize: 11.5, color: "#868A85", margin: "8px 0 0" }}>Tap or hover a session dot for a quick preview.</p>
     </div>
   );
 }
@@ -1466,7 +1466,7 @@ export default function SofaToSingletrack() {
           </div>
           <button onClick={() => setStage("onboarding")} style={navBtn}>Start your programme</button>
           <InstallPrompt deferredPrompt={deferredPrompt} onInstall={handleInstallClick} isIOS={isIOS} isStandalone={isStandalone} />
-          <p style={{ fontSize: 11.5, color: "#7A7E79", lineHeight: 1.5, marginTop: 18 }}>
+          <p style={{ fontSize: 13, color: "#868A85", lineHeight: 1.5, marginTop: 18 }}>
             Training and fuelling notes are general guidance from a fixed content library, not personalised medical, dietetic or coaching advice.
             Mountain biking carries a risk of injury — ride within your ability, and speak to a GP before starting if you have any health concerns.
             Always wear a helmet when riding outside.
@@ -1615,7 +1615,7 @@ export default function SofaToSingletrack() {
                 <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Your bike misses you</div>
                 <div style={{ fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>It's been a couple of weeks — no pressure, jump back in whenever you're ready.</div>
               </div>
-              <button onClick={() => setShowComebackNudge(false)} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#7A7E79", fontSize: 20, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0 }}>×</button>
+              <button onClick={() => setShowComebackNudge(false)} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#868A85", fontSize: 20, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0 }}>×</button>
             </div>
           )}
 
@@ -1625,7 +1625,7 @@ export default function SofaToSingletrack() {
               <div style={{ position: "relative" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
                 <div style={{ background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 10, padding: "5px 10px", textAlign: "center", minWidth: 44, flexShrink: 0 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.04em" }}>{nextSession.session.day}</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.04em" }}>{nextSession.session.day}</div>
                   <div className="display" style={{ fontSize: 20, color: "#F4F3EF", lineHeight: 1.1 }}>{sessionDate(programStart, nextSession.weekN, nextSession.session.day).getDate()}</div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1676,7 +1676,7 @@ export default function SofaToSingletrack() {
                   <img src={`https://img.youtube.com/vi/${nextSessionEffective.video}/hqdefault.jpg`} alt="" width={64} height={36} style={{ borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>▶ Watch the demo</div>
-                    <div style={{ fontSize: 11, color: "#7A7E79" }}>Opens on YouTube</div>
+                    <div style={{ fontSize: 11.5, color: "#868A85" }}>Opens on YouTube</div>
                   </div>
                 </a>
               ) : (
@@ -1684,7 +1684,7 @@ export default function SofaToSingletrack() {
                   <span style={{ fontSize: 18 }}>🎥</span>
                   <div>
                     <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Video demo — coming soon</div>
-                    <div style={{ fontSize: 11, color: "#7A7E79" }}>Real footage from your coach will go here</div>
+                    <div style={{ fontSize: 11.5, color: "#868A85" }}>Real footage from your coach will go here</div>
                   </div>
                 </div>
               )}
@@ -1713,7 +1713,7 @@ export default function SofaToSingletrack() {
                       className={overtime ? "timer-alert" : undefined}
                       style={{ background: "#0d0d0d", borderRadius: 10, padding: "14px", marginBottom: 12, textAlign: "center", border: "1px solid " + (overtime ? "#E24B4A" : "rgb(102, 255, 0)") }}
                     >
-                      <div style={{ fontSize: 10, fontWeight: 700, color: overtime ? "#E24B4A" : "#7A7E79", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: overtime ? "#E24B4A" : "#868A85", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
                         {overtime ? "Time's up!" : isDown ? "Time left" : "Elapsed"}
                       </div>
                       <div className="display" style={{ fontSize: 32, color: overtime ? "#E24B4A" : "#F4F3EF" }}>
@@ -1766,11 +1766,11 @@ export default function SofaToSingletrack() {
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
               <div style={{ flex: 1, background: "#0d0d0d", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
                 <div className="display" style={{ fontSize: 20, color: "#E8792B" }}>{formatMinutes(totalMinutesRidden)}</div>
-                <div style={{ fontSize: 10.5, color: "#B9BDB8", marginTop: 2 }}>Time ridden</div>
+                <div style={{ fontSize: 11.5, color: "#B9BDB8", marginTop: 2 }}>Time ridden</div>
               </div>
               <div style={{ flex: 1, background: "#0d0d0d", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
                 <div className="display" style={{ fontSize: 20, color: "#E8792B" }}>{longestStreakWeeks}</div>
-                <div style={{ fontSize: 10.5, color: "#B9BDB8", marginTop: 2 }}>Best streak (weeks)</div>
+                <div style={{ fontSize: 11.5, color: "#B9BDB8", marginTop: 2 }}>Best streak (weeks)</div>
               </div>
             </div>
 
@@ -1778,7 +1778,7 @@ export default function SofaToSingletrack() {
 
             <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Trophy case</div>
             {badges.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 13, color: "#7A7E79", lineHeight: 1.5 }}>Keep going — your first trophy unlocks after your first week done.</p>
+              <p style={{ margin: 0, fontSize: 13, color: "#868A85", lineHeight: 1.5 }}>Keep going — your first trophy unlocks after your first week done.</p>
             ) : (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {badges.map((b) => (
@@ -1830,7 +1830,7 @@ export default function SofaToSingletrack() {
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{s.session.name}</div>
                           <div style={{ fontSize: 12.5, color: "#B9BDB8" }}>{eff.detail}</div>
                         </div>
-                        <button onClick={() => quickSkip(s)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#7A7E79", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", height: "fit-content" }}>Skip</button>
+                        <button onClick={() => quickSkip(s)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#868A85", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", height: "fit-content" }}>Skip</button>
                       </div>
                     );
                   })}
@@ -1855,7 +1855,7 @@ export default function SofaToSingletrack() {
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Been out on your bike off-plan?</div>
-                  <div style={{ fontSize: 11, color: "#B9BDB8" }}>Any ride counts — not just the scheduled ones</div>
+                  <div style={{ fontSize: 12, color: "#B9BDB8" }}>Any ride counts — not just the scheduled ones</div>
                 </div>
                 <button onClick={openAdHocForm} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ Log a ride</button>
               </div>
@@ -1864,17 +1864,17 @@ export default function SofaToSingletrack() {
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF", marginBottom: 10 }}>Log an extra ride</div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontSize: 10.5, color: "#B9BDB8", marginBottom: 4 }}>Date</label>
+                    <label style={{ display: "block", fontSize: 11.5, color: "#B9BDB8", marginBottom: 4 }}>Date</label>
                     <input type="date" value={adHocDate} max={dateKey(new Date())} onChange={(e) => setAdHocDate(e.target.value)}
                       style={{ width: "100%", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "8px", fontSize: 13, boxSizing: "border-box" }} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontSize: 10.5, color: "#B9BDB8", marginBottom: 4 }}>Minutes</label>
+                    <label style={{ display: "block", fontSize: 11.5, color: "#B9BDB8", marginBottom: 4 }}>Minutes</label>
                     <input type="number" inputMode="numeric" min="1" value={adHocMins} onChange={(e) => setAdHocMins(e.target.value)} placeholder="30"
                       style={{ width: "100%", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "8px", fontSize: 13, boxSizing: "border-box" }} />
                   </div>
                 </div>
-                <label style={{ display: "block", fontSize: 10.5, color: "#B9BDB8", marginBottom: 6 }}>How did it feel?</label>
+                <label style={{ display: "block", fontSize: 11.5, color: "#B9BDB8", marginBottom: 6 }}>How did it feel?</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
                   {FEELINGS.map((f) => (
                     <button key={f} onClick={() => setAdHocFeeling(f)}
