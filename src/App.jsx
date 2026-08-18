@@ -876,6 +876,9 @@ export default function SofaToSingletrack() {
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [reminderTime, setReminderTime] = useState("17:30");
   const [showNotifPrompt, setShowNotifPrompt] = useState(false);
+  const [lastActivityAt, setLastActivityAt] = useState(null); // ms epoch of the last logged/ad-hoc ride
+  const [comebackNudgeShown, setComebackNudgeShown] = useState(false); // has the one-time "miss you" banner ever fired
+  const [showComebackNudge, setShowComebackNudge] = useState(false);
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [toastType, setToastType] = useState("info"); // "info" | "trophy"
@@ -944,6 +947,18 @@ export default function SofaToSingletrack() {
         if (saved.activeTimer) setActiveTimer(saved.activeTimer);
         if (typeof saved.adjustmentMins === "number") setAdjustmentMins(saved.adjustmentMins);
         if (saved.stage && saved.stage !== "checkin") setStage(saved.stage);
+        if (typeof saved.lastActivityAt === "number") setLastActivityAt(saved.lastActivityAt);
+
+        // One-time "the bike misses you" nudge — never repeats once shown, so
+        // it doesn't turn into a nag. Fires the first time someone reopens the
+        // app 14+ days after their last logged ride (or since starting, if
+        // they never got one logged at all).
+        const alreadyShown = !!saved.comebackNudgeShown;
+        const baseline = saved.lastActivityAt || (saved.programStart ? new Date(saved.programStart).getTime() : null);
+        if (!alreadyShown && baseline && saved.stage === "dashboard" && Date.now() - baseline >= 14 * 24 * 60 * 60 * 1000) {
+          setShowComebackNudge(true);
+        }
+        setComebackNudgeShown(alreadyShown || (!!baseline && saved.stage === "dashboard" && Date.now() - baseline >= 14 * 24 * 60 * 60 * 1000));
       }
     } catch (e) {
       // no saved progress yet, or storage unavailable
@@ -954,12 +969,12 @@ export default function SofaToSingletrack() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), sessionDurations, activeTimer, adjustmentMins, stage });
+      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown });
       localStorage.setItem(STORAGE_KEY, payload);
     } catch (e) {
       // storage unavailable (private browsing, quota) — progress just won't persist
     }
-  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage]);
+  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown]);
 
   useEffect(() => { if (stage === "onboarding" && nameRef.current) nameRef.current.focus(); }, [stage, step]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), toastType === "trophy" ? 4200 : 3000); return () => clearTimeout(t); }, [toast, toastType]);
@@ -1163,6 +1178,7 @@ export default function SofaToSingletrack() {
       const effectiveMins = Math.max(5, target.session.mins + adjustmentMins);
       setSessionDurations((prev) => ({ ...prev, [target.key]: effectiveMins }));
     }
+    if (feeling !== "Didn't get to it") setLastActivityAt(Date.now());
 
     setAdjustWarning(applyFeelingAdjustment(feeling));
 
@@ -1357,6 +1373,7 @@ export default function SofaToSingletrack() {
     const newAdHocLog = [...adHocLog, { week, at: rideDate.getTime(), mins, feeling: adHocFeeling }];
     setAdHocLog(newAdHocLog);
     setAdHocFormOpen(false);
+    setLastActivityAt(Date.now());
     const justAwarded = checkAllBadges(sessionLog, newAdHocLog);
     if (justAwarded.length > 0) {
       celebrateTrophies(justAwarded);
@@ -1590,6 +1607,17 @@ export default function SofaToSingletrack() {
 
       {stage === "dashboard" && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "28px 20px 48px" }}>
+
+          {showComebackNudge && !programmeComplete && (
+            <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "1px solid #E8792B", display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">🚲</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Your bike misses you</div>
+                <div style={{ fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>It's been a couple of weeks — no pressure, jump back in whenever you're ready.</div>
+              </div>
+              <button onClick={() => setShowComebackNudge(false)} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#7A7E79", fontSize: 20, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0 }}>×</button>
+            </div>
+          )}
 
           {!programmeComplete && nextSession && (
             <div style={{ background: "#161616", borderRadius: 14, padding: "20px", marginBottom: 16, border: "2px solid #E8792B", position: "relative", overflow: "hidden" }}>
