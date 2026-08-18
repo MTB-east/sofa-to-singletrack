@@ -521,6 +521,142 @@ function TipsAndAdvice() {
   );
 }
 
+function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast }) {
+  const [expanded, setExpanded] = useState(false);
+  const [editingDays, setEditingDays] = useState(false);
+  const [draftDays, setDraftDays] = useState(profile.chosenDays);
+  const [pendingImport, setPendingImport] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const startEditDays = () => {
+    setDraftDays(profile.chosenDays);
+    setEditingDays(true);
+  };
+
+  const toggleDraftDay = (day) => {
+    setDraftDays((prev) => {
+      const has = prev.includes(day);
+      let next;
+      if (has) next = prev.filter((d) => d !== day);
+      else if (prev.length < profile.sessionsPerWeek) next = [...prev, day];
+      else next = prev;
+      return next.sort((a, b) => WEEKDAYS.indexOf(a) - WEEKDAYS.indexOf(b));
+    });
+  };
+
+  const saveDays = () => {
+    if (draftDays.length !== profile.sessionsPerWeek) return;
+    setProfile({ ...profile, chosenDays: draftDays });
+    setWeeks(buildProgramme(weeks.length, draftDays));
+    setEditingDays(false);
+    showToast("Training days updated.");
+  };
+
+  const exportProgress = () => {
+    const raw = localStorage.getItem(STORAGE_KEY) || "{}";
+    const blob = new Blob([raw], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sofa-to-singletrack-backup-${dateKey(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Backup downloaded.");
+  };
+
+  const handleFileSelected = (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed.profile || !parsed.weeks) {
+          showToast("That doesn't look like a Sofa to Singletrack backup file.");
+          return;
+        }
+        setPendingImport({ text: reader.result, name: parsed.profile.name || "rider", ridesLogged: Object.keys(parsed.sessionLog || {}).length });
+      } catch (err) {
+        showToast("Couldn't read that file — is it a backup exported from this app?");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const confirmImport = () => {
+    if (!pendingImport) return;
+    localStorage.setItem(STORAGE_KEY, pendingImport.text);
+    window.location.reload();
+  };
+
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+      <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Settings</span>
+        <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
+      </button>
+      {expanded && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Training days</div>
+          {!editingDays ? (
+            <>
+              <p style={{ margin: "0 0 10px", fontSize: 13, color: "#F4F3EF" }}>{profile.chosenDays.join(", ")}</p>
+              <button onClick={startEditDays} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Change days</button>
+            </>
+          ) : (
+            <>
+              <p style={{ margin: "0 0 10px", fontSize: 12, color: "#B9BDB8" }}>Pick exactly {profile.sessionsPerWeek} — tap to select or deselect.</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                {WEEKDAYS.map((day) => {
+                  const selected = draftDays.includes(day);
+                  const disabled = !selected && draftDays.length >= profile.sessionsPerWeek;
+                  return (
+                    <button key={day} onClick={() => toggleDraftDay(day)} disabled={disabled}
+                      style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid " + (selected ? "#E8792B" : "#2b2b2b"), background: selected ? "#E8792B" : "#0d0d0d", color: selected ? "#fff" : disabled ? "#868A85" : "#F4F3EF", fontSize: 13, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={saveDays} disabled={draftDays.length !== profile.sessionsPerWeek} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: draftDays.length !== profile.sessionsPerWeek ? "default" : "pointer", opacity: draftDays.length !== profile.sessionsPerWeek ? 0.5 : 1 }}>Save</button>
+                <button onClick={() => setEditingDays(false)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+              </div>
+            </>
+          )}
+
+          <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Back up your progress</div>
+          <p style={{ margin: "0 0 10px", fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>
+            Everything is stored only on this device. Save a backup before switching phones or clearing your browser, so you don't lose your progress.
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={exportProgress} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Download backup</button>
+            <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Restore backup</button>
+            <input ref={fileInputRef} type="file" accept="application/json" onChange={handleFileSelected} style={{ display: "none" }} />
+          </div>
+
+          {pendingImport && (
+            <div style={{ marginTop: 12, background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 8, padding: "12px 14px" }}>
+              <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "#F4F3EF", lineHeight: 1.4 }}>
+                This backup is for <strong>{pendingImport.name}</strong>, with {pendingImport.ridesLogged} session{pendingImport.ridesLogged === 1 ? "" : "s"} logged. Restoring it will replace your current progress on this device — this can't be undone.
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={confirmImport} style={{ background: "#E8792B", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Replace my progress</button>
+                <button onClick={() => setPendingImport(null)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const GENERIC_COACH_FALLBACK = "Nice work getting out there — keep it up and see you at the next session.";
 
 function loadImage(src) {
@@ -1936,6 +2072,8 @@ export default function SofaToSingletrack() {
           </div>
 
           <TipsAndAdvice />
+
+          <SettingsSection profile={profile} setProfile={setProfile} weeks={weeks} setWeeks={setWeeks} showToast={showToast} />
         </div>
       )}
 
