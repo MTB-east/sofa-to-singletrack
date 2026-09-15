@@ -404,7 +404,7 @@ function InstallPrompt({ deferredPrompt, onInstall, isIOS, isStandalone }) {
 function AppHeader() {
   return (
     <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 20px", borderBottom: "1px solid #1c1c1c" }}>
-      <img src="/brand/header-mark.png" alt="" width={24} height={24} style={{ display: "block" }} />
+      <img src={`${import.meta.env.BASE_URL}brand/header-mark.png`} alt="" width={24} height={24} style={{ display: "block" }} />
       <span className="display" style={{ fontSize: 13, letterSpacing: "0.08em", color: "#F4F3EF" }}>SOFA TO SINGLETRACK</span>
       <span style={{ fontSize: 11, color: "#B9BDB8", fontWeight: 600 }}>· MTB EAST</span>
     </div>
@@ -414,7 +414,7 @@ function AppHeader() {
 function SplashScreen() {
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-      <img src="/brand/logo-full.png" alt="MTB East" width={160} height={160} style={{ marginBottom: 20 }} />
+      <img src={`${import.meta.env.BASE_URL}brand/logo-full.png`} alt="MTB East" width={160} height={160} style={{ marginBottom: 20 }} />
       <h1 className="display" style={{ fontSize: 32, lineHeight: 1.1, margin: 0, color: "#E8792B", textAlign: "center" }}>SOFA TO<br />SINGLETRACK</h1>
     </div>
   );
@@ -1435,7 +1435,7 @@ export default function SofaToSingletrack() {
     ctx.globalAlpha = 1;
 
     try {
-      const logo = await loadImage("/brand/header-mark.png");
+      const logo = await loadImage(`${import.meta.env.BASE_URL}brand/header-mark.png`);
       ctx.drawImage(logo, 490, 90, 100, 100);
     } catch (e) { /* logo optional, card still works without it */ }
 
