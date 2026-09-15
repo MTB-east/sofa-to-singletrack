@@ -27,6 +27,12 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,webp,ico}"],
+        // /games/ is a separate static site copied into dist alongside the
+        // app (see .github/workflows/deploy-pages.yml) -- without this, the
+        // PWA's SPA navigation fallback serves the app's cached index.html
+        // for any /games/* URL once someone has the app's service worker
+        // installed, instead of the actual games page.
+        navigateFallbackDenylist: [/^\/games\//],
       },
     }),
   ],

@@ -1623,6 +1623,9 @@ export default function SofaToSingletrack() {
             Always wear a helmet when riding outside.
             No data about you is recorded or held by MTB East CIC — everything you enter is stored only on this device.
           </p>
+          <a href="games/" style={{ display: "block", textAlign: "center", fontFamily: "Oswald, sans-serif", fontSize: 13, letterSpacing: "0.04em", color: "#1B8A82", textDecoration: "none", marginBottom: 18 }}>
+            Got younger riders at home? Try our free games →
+          </a>
           <FAQSection />
         </div>
       )}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#14171A" />
+    <meta name="description" content="Singletrack Sprint — an MTB East trail runner for young riders. Jump roots, duck branches, collect skill badges." />
+    <title>Singletrack Sprint — MTB East</title>
+    <link rel="icon" type="image/png" href="assets/header-mark.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <a class="topbar-back" href="../">&larr; Games</a>
+        <span class="topbar-title">
+          <img class="mark" src="assets/header-mark.png" alt="MTB East" />
+          <span class="brand">SINGLETRACK <span class="accent">SPRINT</span></span>
+        </span>
+      </header>
+
+      <div class="stage">
+        <canvas id="game" width="960" height="320" aria-label="Singletrack Sprint game canvas"></canvas>
+
+        <div id="hud" class="hud" hidden>
+          <span id="hud-distance">0 m</span>
+          <span id="hud-badges">🏅 0</span>
+        </div>
+
+        <div id="toast" class="toast" hidden></div>
+
+        <section id="start-screen" class="overlay">
+          <h1>Singletrack Sprint</h1>
+          <p class="lede">Jump roots, duck branches, dodge puddles — and pick up skill badges along the way.</p>
+          <button id="btn-start" class="btn-primary">Start ride</button>
+          <p class="controls-hint">
+            <strong>Desktop:</strong> Space / ↑ to jump · ↓ to duck<br />
+            <strong>Touch:</strong> tap top half to jump · tap bottom half to duck
+          </p>
+          <p class="best" id="best-line" hidden></p>
+        </section>
+
+        <section id="end-screen" class="overlay" hidden>
+          <h1>Trail run over!</h1>
+          <p class="stat-line"><span id="end-distance">0 m</span> · <span id="end-badges">0 badges</span></p>
+          <p class="best" id="end-best"></p>
+          <p class="tip" id="end-tip"></p>
+          <button id="btn-again" class="btn-primary">Ride again</button>
+        </section>
+      </div>
+
+      <footer class="foot">Skill badges are named after real trail skills — ask a coach to show you one. · MTB East</footer>
+    </div>
+
+    <script src="game.js"></script>
+  </body>
+</html>

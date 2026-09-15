@@ -1,0 +1,184 @@
+:root {
+  --ink: #14171A;
+  --teal: #1B8A82;
+  --tealdk: #0F5F59;
+  --orange: #E8792B;
+  --paper: #F4F3EF;
+  --card: #161616;
+  --border: #2b2b2b;
+  --grey: #B9BDB8;
+  --dim: #868A85;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: #000000;
+  color: var(--paper);
+  font-family: 'Source Sans 3', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url('trail-sign-match/assets/topo-bg.webp');
+  background-size: 480px;
+  background-repeat: repeat;
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 0;
+}
+#app {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 12px 32px;
+}
+
+.display, h1, .brand, .btn-primary {
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 0 20px;
+}
+.topbar .mark { width: 32px; height: 32px; }
+.topbar .brand {
+  font-family: 'Oswald', sans-serif;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--paper);
+}
+.topbar .brand .accent { color: var(--orange); }
+
+.panel { width: 100%; max-width: 720px; }
+
+.intro {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.intro h1 {
+  font-size: clamp(24px, 6vw, 34px);
+  margin: 0 0 10px;
+  color: var(--orange);
+}
+.intro p {
+  margin: 0 auto;
+  max-width: 480px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--grey);
+}
+
+.game-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+@media (min-width: 560px) {
+  .game-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.game-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.game-card:active { border-color: var(--teal); }
+
+.game-card .thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+}
+
+.game-card .tag {
+  display: inline-block;
+  font-family: 'Oswald', sans-serif;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--tealdk);
+  background: rgba(27, 138, 130, 0.14);
+  border: 1px solid var(--teal);
+  border-radius: 999px;
+  padding: 3px 10px;
+  width: fit-content;
+}
+
+.game-card h2 {
+  margin: 0;
+  font-size: 19px;
+  color: var(--paper);
+}
+
+.game-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--grey);
+  flex-grow: 1;
+}
+
+.game-card .play-link {
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--teal);
+}
+.game-card:active .play-link { color: var(--tealdk); }
+
+.coming-soon {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.back-link {
+  display: block;
+  text-align: center;
+  font-size: 13px;
+  color: var(--grey);
+  margin-bottom: 20px;
+}
+
+.motto-banner {
+  display: block;
+  max-width: 280px;
+  width: 100%;
+  margin: 8px auto 12px;
+  opacity: 0.85;
+}
+
+.foot {
+  text-align: center;
+  font-size: 11px;
+  color: var(--dim);
+}
