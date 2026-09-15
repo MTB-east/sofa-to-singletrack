@@ -40,12 +40,12 @@
       fact: "That's Gary! Easy to spot in his jester hat, he hands out the medals at the end of every U7, U9 and U12 race.",
     },
     {
-      id: "round4",
+      id: "adam",
       type: "image",
       category: "brand",
-      src: "assets/round4-owl.png",
-      label: "Spare badge",
-      fact: "...and an owl badge too, waiting for whenever a new round joins the calendar.",
+      src: "assets/adam-march.png",
+      label: "Adam",
+      fact: "That's Adam March — part of MTB East's comms team, keeping everyone in the loop before and during race day.",
     },
     {
       id: "giveway",
