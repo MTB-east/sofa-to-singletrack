@@ -32,12 +32,12 @@
       fact: "Round 2 of the MTB East League races at Gallows Green!",
     },
     {
-      id: "round3",
+      id: "gary",
       type: "image",
       category: "brand",
-      src: "assets/round3-fox.png",
-      label: "Spare badge",
-      fact: "MTB East keeps a fox badge in reserve, ready for a future League round.",
+      src: "assets/gary-medals.png",
+      label: "Gary",
+      fact: "That's Gary! Easy to spot in his jester hat, he hands out the medals at the end of every U7, U9 and U12 race.",
     },
     {
       id: "round4",
