@@ -2,11 +2,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
-// GitHub Pages serves this as a project page at /sofa-to-singletrack/, not
-// domain root -- only apply that base to production builds so local dev/
-// preview (which run at root) are unaffected.
+// GitHub Pages serves this as a project page at /sofa-to-singletrack/, and
+// the MTB East Website embeds it at /programme/ -- neither is domain root,
+// so base must be set per build target. VITE_BASE_PATH picks the target;
+// only applied to production builds so local dev/preview (served at root)
+// are unaffected.
 export default defineConfig(({ command }) => {
-  const base = command === "build" ? "/sofa-to-singletrack/" : "/";
+  const base = command === "build" ? (process.env.VITE_BASE_PATH || "/sofa-to-singletrack/") : "/";
 
   return {
     base,
