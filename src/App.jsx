@@ -502,6 +502,7 @@ function MarshalNote({ card }) {
 // The next round the signed-in account has entered: where, when, the forecast once there is one, and the day's timings.
 function RaceWeekCard({ entry }) {
   const days = entry.daysAway;
+  const coachNote = raceWeekNote(days);
   const week = days <= 10;
   const dateText = new Date(entry.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const later = entry.forecastLater ? new Date(entry.forecastLater + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : null;
@@ -515,6 +516,11 @@ function RaceWeekCard({ entry }) {
         <div className="display" style={{ fontSize: 22, lineHeight: 1.15 }}>{entry.name}, {entry.venue}</div>
         <div style={{ fontSize: 15, color: "#B9BDB8", margin: "2px 0 10px" }}>{dateText}</div>
         {entry.riders && entry.riders.length > 0 && <p style={{ fontSize: 15, margin: "0 0 10px" }}>Entered: <strong>{entry.riders.join(", ")}</strong></p>}
+        {coachNote && (
+          <p style={{ fontSize: 16, lineHeight: 1.55, margin: "0 0 12px", padding: "10px 12px", background: "#0d0d0d", borderLeft: "3px solid #1B8A82" }}>
+            <strong>Coach note:</strong> {coachNote}
+          </p>
+        )}
         {entry.forecast ? (
           <p style={{ fontSize: 15, lineHeight: 1.5, margin: "0 0 10px" }}><strong>Forecast for the day (8am to 3pm):</strong> {entry.forecast} Forecasts change, so check again the day before.</p>
         ) : later ? (
@@ -602,6 +608,39 @@ function FamilyPanel({ index, onSwitch, onAdd, onRemove }) {
           <p style={{ fontSize: 13, color: "#868A85", margin: "10px 0 0", lineHeight: 1.4 }}>For a child under 16, please set up and log their rides yourself, and ride with them where needed.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function CoachTips({ onContact }) {
+  const [open, setOpen] = useState(null);
+  const situations = COACH_SCENARIOS.situations || {};
+  const keys = Object.keys(COACH_TIP_TITLES).filter((k) => situations[k]);
+  if (keys.length === 0) return null;
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Coach tips</div>
+      <p style={{ margin: "0 0 8px", fontSize: 15, color: "#B9BDB8", lineHeight: 1.5 }}>What riders worry about most, answered. Tap the one that sounds like you.</p>
+      {keys.map((k, i) => (
+        <div key={k} style={{ borderBottom: i < keys.length - 1 ? "1px solid #2b2b2b" : "none" }}>
+          <button onClick={() => setOpen(open === k ? null : k)} aria-expanded={open === k} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "#F4F3EF", padding: "12px 0", fontSize: 16, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span>{COACH_TIP_TITLES[k]}</span>
+            <span style={{ color: "#E8792B", fontSize: 18, flexShrink: 0 }}>{open === k ? "–" : "+"}</span>
+          </button>
+          {open === k && <p style={{ margin: "0 0 14px", fontSize: 16, color: "#F4F3EF", lineHeight: 1.55 }}>{situations[k]}</p>}
+        </div>
+      ))}
+      <button onClick={onContact} style={{ marginTop: 10, minHeight: 44, width: "100%", background: "none", border: "1px solid #E8792B", color: "#E8792B", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer" }}>Still stuck? Contact a coach</button>
+    </div>
+  );
+}
+
+// The coach's note for race week, when a rider is aiming at a race (the round they picked in setup) and it is close.
+function RaceCoachNote({ race, note }) {
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #1B8A82" }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#1B8A82", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Coach note · {race.name}, {race.venue}</div>
+      <p style={{ margin: 0, fontSize: 16, lineHeight: 1.55, color: "#F4F3EF" }}>{note}</p>
     </div>
   );
 }
@@ -1097,6 +1136,26 @@ function playTimerAlertSound() {
 function fillTemplate(str, vars) {
   return str.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : `{${k}}`));
 }
+
+// The coach's race-week message for how far away the race is: the week before (taper), the day before, and race morning.
+function raceWeekNote(daysAway) {
+  const rw = COACH_SCENARIOS.raceWeek || {};
+  if (daysAway === 0) return rw.raceMorning || null;
+  if (daysAway === 1) return rw.dayBefore || null;
+  if (daysAway >= 2 && daysAway <= 7) return rw.taper || null;
+  return null;
+}
+
+// The coach's answers to the worries riders raise most, shown as tips they can open any time.
+const COACH_TIP_TITLES = {
+  descents: "Nervous on descents",
+  joints: "Aches and niggles",
+  climbs: "Struggling on climbs",
+  motivation: "Missed sessions or lost motivation",
+  equipment: "The bike feels wrong",
+  weather: "Bad weather",
+  comparison: "Comparing yourself with other riders",
+};
 
 function getCoachNote(target, feeling) {
   const phase = target.weekN <= 3 ? "early" : "later";
@@ -2467,6 +2526,9 @@ export default function SofaToSingletrack() {
 
           {!(account && !account.signedIn && signInCardHidden) && <AccountCard account={account} onHide={() => { setSignInCardHidden(true); try { localStorage.setItem("sofaToSingletrack:hideSignInCard", "1"); } catch (e) { /* storage unavailable */ } }} />}
           {raceWeek && <RaceWeekCard entry={raceWeek} />}
+          {!raceWeek && selectedRace && raceWeekNote(daysUntil(selectedRace.date)) && new Date(selectedRace.date + "T00:00:00") >= new Date(new Date().setHours(0, 0, 0, 0)) && (
+            <RaceCoachNote race={selectedRace} note={raceWeekNote(daysUntil(selectedRace.date))} />
+          )}
           {showRaceOffer && nextRelevantRace && !raceWeek && !programmeComplete && (
             <RaceAdvert race={nextRelevantRace} funPrice={funPrice} onDismiss={() => setShowRaceOffer(false)} />
           )}
@@ -2752,6 +2814,7 @@ export default function SofaToSingletrack() {
             </div>
           </div>
 
+          <CoachTips onContact={() => setStage("coachQA")} />
           <TipsAndAdvice />
 
           <FamilyPanel index={riderIndex} onSwitch={switchRider} onAdd={addRider} onRemove={removeRider} />
