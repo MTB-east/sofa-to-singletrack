@@ -63,6 +63,42 @@ function decideSync(local, server) {
   if (hasLocal) return { action: "saveToAccount" };
   return { action: "nothing" };
 }
+// ---- Voice cues during a ride ------------------------------------------------------------------
+// Spoken by the phone's own built-in voice. Only works while the app is open and the screen is on: a web app is paused by the phone
+// when the screen locks, so nothing can be said (or beep) until it's unlocked again.
+const VOICE_KEY = "sofaToSingletrack:voice";
+const speechSupported = () => typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined";
+function speak(text) {
+  if (!speechSupported()) return;
+  try {
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-GB";
+    u.rate = 0.95;
+    const voice = synth.getVoices().find((v) => v.lang === "en-GB" || v.lang === "en_GB");
+    if (voice) u.voice = voice;
+    synth.speak(u);
+  } catch (e) { /* speech unavailable: the visual timer still works */ }
+}
+
+// The spoken cues for a ride of a given length: halfway, five minutes, one minute, and the end.
+function rideCues(targetMins, name) {
+  const t = Number(targetMins) || 0;
+  const cues = [];
+  if (t >= 20) cues.push({ id: "half", atMs: t * 30000, text: `Halfway. About ${Math.ceil(t / 2)} minutes to go.` });
+  if (t > 10) cues.push({ id: "five", atMs: (t - 5) * 60000, text: "Five minutes to go." });
+  if (t >= 3) cues.push({ id: "one", atMs: (t - 1) * 60000, text: "One minute to go." });
+  if (t > 0) cues.push({ id: "done", atMs: t * 60000, text: `That's your ${t} minutes${name ? ", " + name : ""}. Ease off, and finish when you're ready.` });
+  return cues.sort((a, b) => a.atMs - b.atMs);
+}
+
+// Which cue to say now. A cue that is more than 45 seconds late (the screen was locked, say) is skipped rather than said out of date.
+function nextCue(cues, elapsedMs, spoken) {
+  const due = cues.filter((c) => c.atMs <= elapsedMs && !spoken.has(c.id));
+  const fresh = due.filter((c) => elapsedMs - c.atMs <= 45000);
+  return { cue: fresh.length ? fresh[fresh.length - 1] : null, mark: due.map((c) => c.id) };
+}
 const TEXT_SCALES = { standard: 1, large: 1.12, larger: 1.25, largest: 1.4 };
 const TEXT_SIZE_KEY = "sofaToSingletrack:textSize";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -429,7 +465,7 @@ function RaceAdvert({ race, funPrice, onDismiss }) {
       <div className="display" style={{ background: "#E8792B", color: "#111111", padding: "8px 16px", fontSize: 16, letterSpacing: "0.06em" }}>
         NEXT MTB EAST RACE · {days === 0 ? "TODAY" : days === 1 ? "TOMORROW" : days + " DAYS TO GO"}
       </div>
-      <button onClick={onDismiss} aria-label="Dismiss this" style={{ position: "absolute", top: 0, right: 0, width: 44, height: 44, background: "none", border: "none", color: "#111111", fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>
+      {onDismiss && <button onClick={onDismiss} aria-label="Dismiss this" style={{ position: "absolute", top: 0, right: 0, width: 44, height: 44, background: "none", border: "none", color: "#111111", fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>}
       <div style={{ padding: "14px 16px 16px" }}>
         <div className="display" style={{ fontSize: 22, lineHeight: 1.15 }}>{race.name}, {race.venue}</div>
         <div style={{ fontSize: 15, color: "#B9BDB8", margin: "2px 0 10px" }}>{dateText}</div>
@@ -440,7 +476,132 @@ function RaceAdvert({ race, funPrice, onDismiss }) {
           <a href="/account/upcoming" style={{ background: "#E8792B", color: "#111111", fontWeight: 700, fontSize: 15, textDecoration: "none", padding: "12px 18px", borderRadius: 8, minHeight: 44, boxSizing: "border-box", display: "inline-flex", alignItems: "center" }}>Enter this race</a>
           <a href="/league" style={{ border: "1px solid #E8792B", color: "#E8792B", fontWeight: 600, fontSize: 15, textDecoration: "none", padding: "12px 18px", borderRadius: 8, minHeight: 44, boxSizing: "border-box", display: "inline-flex", alignItems: "center" }}>Race details</a>
         </div>
+        <MarshalNote />
       </div>
+    </div>
+  );
+}
+
+// The route into racing that doesn't need a race entry: marshal for a while and earn one.
+function MarshalNote({ card }) {
+  const text = (
+    <>
+      Not ready to race yet? Marshal at a round and earn your way in: half a day earns <strong>50% off</strong> a race entry, a full day a <strong>free entry</strong>. Marshals stand at a point on the course and cheer riders on, and you can bring a friend.{" "}
+      <a href="/volunteering" style={{ color: "#E8792B", fontWeight: 600 }}>See the Marshal Club</a>
+    </>
+  );
+  if (!card) return <p style={{ fontSize: 15, lineHeight: 1.5, color: "#B9BDB8", margin: "14px 0 0" }}>{text}</p>;
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid #2b2b2b" }}>
+      <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 6 }}>Get a feel for race day first</div>
+      <p style={{ fontSize: 15, lineHeight: 1.5, color: "#F4F3EF", margin: 0 }}>{text}</p>
+    </div>
+  );
+}
+
+// The next round the signed-in account has entered: where, when, the forecast once there is one, and the day's timings.
+function RaceWeekCard({ entry }) {
+  const days = entry.daysAway;
+  const week = days <= 10;
+  const dateText = new Date(entry.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const later = entry.forecastLater ? new Date(entry.forecastLater + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : null;
+  const linkBtn = { border: "1px solid #1B8A82", color: "#F4F3EF", fontWeight: 600, fontSize: 15, textDecoration: "none", padding: "12px 16px", borderRadius: 8, minHeight: 44, boxSizing: "border-box", display: "inline-flex", alignItems: "center" };
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, marginBottom: 16, border: "1px solid #1B8A82", overflow: "hidden" }}>
+      <div className="display" style={{ background: "#1B8A82", color: "#ffffff", padding: "8px 16px", fontSize: 14, letterSpacing: "0.06em" }}>
+        {week ? "RACE WEEK" : "YOUR NEXT RACE"} · {days === 0 ? "TODAY" : days === 1 ? "TOMORROW" : days + " DAYS TO GO"}
+      </div>
+      <div style={{ padding: "14px 16px 16px" }}>
+        <div className="display" style={{ fontSize: 22, lineHeight: 1.15 }}>{entry.name}, {entry.venue}</div>
+        <div style={{ fontSize: 15, color: "#B9BDB8", margin: "2px 0 10px" }}>{dateText}</div>
+        {entry.riders && entry.riders.length > 0 && <p style={{ fontSize: 15, margin: "0 0 10px" }}>Entered: <strong>{entry.riders.join(", ")}</strong></p>}
+        {entry.forecast ? (
+          <p style={{ fontSize: 15, lineHeight: 1.5, margin: "0 0 10px" }}><strong>Forecast for the day (8am to 3pm):</strong> {entry.forecast} Forecasts change, so check again the day before.</p>
+        ) : later ? (
+          <p style={{ fontSize: 15, lineHeight: 1.5, color: "#B9BDB8", margin: "0 0 10px" }}>The forecast appears from about {later}. Check back then.</p>
+        ) : null}
+        {entry.where && (
+          <p style={{ fontSize: 15, lineHeight: 1.5, margin: "0 0 10px" }}>
+            <strong>Where:</strong> {entry.where.address}. <strong>Parking:</strong> {entry.where.parking}{" "}
+            <a href={"https://what3words.com/" + entry.where.what3words} target="_blank" rel="noopener noreferrer" style={{ color: "#E8792B" }}>///{entry.where.what3words}</a>
+          </p>
+        )}
+        {entry.timings && entry.timings.length > 0 && (
+          <details style={{ marginBottom: 12 }}>
+            <summary style={{ cursor: "pointer", fontSize: 15, fontWeight: 600, minHeight: 44, display: "flex", alignItems: "center" }}>Race-day timings</summary>
+            <ul style={{ margin: "4px 0 0", padding: 0, listStyle: "none", fontSize: 14, lineHeight: 1.6, color: "#B9BDB8" }}>
+              {entry.timings.map((t) => (<li key={t.time}><strong style={{ color: "#F4F3EF" }}>{t.time}</strong> {t.label}</li>))}
+            </ul>
+            <p style={{ fontSize: 13, color: "#868A85", margin: "6px 0 0" }}>A guide: announcements on the day take priority.</p>
+          </details>
+        )}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <a href={"/calendar.ics?event=" + entry.eventId} style={linkBtn}>Add to my calendar</a>
+          {entry.where && <a href={entry.where.directionsUrl} target="_blank" rel="noopener noreferrer" style={linkBtn}>Get directions</a>}
+          <a href="/league" style={linkBtn}>Race details</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Who is riding: switch between the people using the app on this phone (and this account), or add someone.
+function RiderSwitcher({ index, onSwitch }) {
+  if (index.riders.length < 2) return null;
+  return (
+    <div role="group" aria-label="Who is riding" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 16px", borderBottom: "1px solid #1c1c1c" }}>
+      {index.riders.map((r) => (
+        <button key={r.id} onClick={() => onSwitch(r.id)} aria-pressed={r.id === index.active} style={{ flexShrink: 0, minHeight: 44, padding: "8px 16px", borderRadius: 22, fontSize: 15, fontWeight: 600, cursor: "pointer", background: r.id === index.active ? "#0F5F59" : "#161616", color: "#ffffff", border: "1px solid " + (r.id === index.active ? "#0F5F59" : "#2b2b2b") }}>
+          {r.name || "Me"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FamilyPanel({ index, onSwitch, onAdd, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const submit = () => {
+    const err = onAdd(name);
+    if (err) setError(err);
+    else { setName(""); setError(""); setOpen(false); }
+  };
+  const btn = { minHeight: 44, padding: "8px 14px", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer", background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8" };
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Riding with family?</div>
+      <p style={{ margin: "0 0 12px", fontSize: 15, lineHeight: 1.5, color: "#F4F3EF" }}>
+        Everyone gets their own plan and progress, all on this one phone and account. Add a child or a partner, then switch between riders at the top of the screen.
+      </p>
+      {index.riders.length > 1 && (
+        <ul style={{ margin: "0 0 12px", padding: 0, listStyle: "none" }}>
+          {index.riders.map((r) => (
+            <li key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 0", fontSize: 15 }}>
+              <span>{r.name || "Me"}{r.id === index.active ? " (riding now)" : ""}</span>
+              <span style={{ display: "flex", gap: 8 }}>
+                {r.id !== index.active && <button onClick={() => onSwitch(r.id)} style={btn}>Switch</button>}
+                {r.id !== "main" && <button onClick={() => onRemove(r.id)} style={{ ...btn, color: "#E24B4A", borderColor: "#5a2a2a" }}>Remove</button>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!open ? (
+        <button onClick={() => setOpen(true)} style={btn}>＋ Add a rider</button>
+      ) : (
+        <div>
+          <label htmlFor="family-name" style={{ display: "block", fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Their first name</label>
+          <input id="family-name" value={name} onChange={(e) => { setName(e.target.value); setError(""); }} maxLength={40} style={{ width: "100%", boxSizing: "border-box", minHeight: 44, padding: "8px 12px", fontSize: 16, borderRadius: 8, border: "1px solid #2b2b2b", background: "#0d0d0d", color: "#F4F3EF", marginBottom: 8 }} />
+          {error && <p role="alert" style={{ color: "#E24B4A", fontSize: 15, margin: "0 0 8px" }}>{error}</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={submit} style={{ ...btn, background: "#0F5F59", border: "1px solid #0F5F59", color: "#ffffff" }}>Add and set up their plan</button>
+            <button onClick={() => { setOpen(false); setError(""); }} style={btn}>Cancel</button>
+          </div>
+          <p style={{ fontSize: 13, color: "#868A85", margin: "10px 0 0", lineHeight: 1.4 }}>For a child under 16, please set up and log their rides yourself, and ride with them where needed.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -498,6 +659,39 @@ function TextSizeControl({ value, onChange }) {
       {options.map(([key, label]) => (
         <button key={key} onClick={() => onChange(key)} aria-pressed={value === key} style={{ minHeight: 44, padding: "8px 14px", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer", background: value === key ? "#0F5F59" : "#161616", color: "#ffffff", border: "1px solid " + (value === key ? "#0F5F59" : "#2b2b2b") }}>{label}</button>
       ))}
+    </div>
+  );
+}
+
+// What the ride timer can and can't do about the screen and the voice, said plainly.
+function RideTimerStatus({ running, wakeState, voiceOn, onToggleVoice }) {
+  const wakeSupported = typeof navigator !== "undefined" && "wakeLock" in navigator;
+  const box = { borderRadius: 10, padding: "12px 14px", marginBottom: 12, fontSize: 15, lineHeight: 1.5 };
+  const warn = (running && (wakeState === "unsupported" || wakeState === "blocked")) || (!running && !wakeSupported);
+  return (
+    <div>
+      {speechSupported() ? (
+        <button onClick={onToggleVoice} aria-pressed={voiceOn} style={{ width: "100%", minHeight: 44, marginBottom: 10, borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer", background: voiceOn ? "#0F5F59" : "#0d0d0d", color: "#ffffff", border: "1px solid " + (voiceOn ? "#0F5F59" : "#2b2b2b") }}>
+          {voiceOn ? "🔊 Voice cues: on (halfway, 5 min, 1 min, done)" : "🔇 Voice cues: off"}
+        </button>
+      ) : (
+        <p style={{ ...box, background: "#0d0d0d", color: "#B9BDB8", margin: "0 0 10px" }}>Voice cues aren't available on this phone or browser.</p>
+      )}
+      {warn ? (
+        <div role="note" style={{ ...box, background: "#2a1a10", border: "1px solid #E8792B", color: "#F4F3EF" }}>
+          <strong>Your screen may lock while you ride.</strong>{" "}
+          {running ? "This phone or browser won't let the app keep the screen awake. " : "This phone or browser can't keep the screen awake for the app. "}
+          The timer still keeps the right time, but the beep and voice cues can't play while the screen is locked. To avoid it, set your phone's Auto-Lock (iPhone) or Screen timeout (Android) to a longer time before you start, and keep the app open in front of you.
+        </div>
+      ) : running && wakeState === "on" ? (
+        <p style={{ ...box, background: "#0d0d0d", color: "#B9BDB8", margin: "0 0 12px" }}>
+          ✓ The app is asking your phone to keep the screen on. If your screen locks anyway (some phones ignore this), the timer stays right, but the beep and voice cues pause until you unlock it.
+        </p>
+      ) : !running ? (
+        <p style={{ ...box, background: "#0d0d0d", color: "#B9BDB8", margin: "0 0 12px" }}>
+          When you start, the app asks your phone to keep the screen on. Some phones ignore this; if the screen locks, the timer stays right, but the beep and voice cues pause until you unlock it. Turn your volume up.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -712,7 +906,7 @@ function TipsAndAdvice() {
   );
 }
 
-function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast }) {
+function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, storageKey }) {
   const [expanded, setExpanded] = useState(false);
   const [editingDays, setEditingDays] = useState(false);
   const [draftDays, setDraftDays] = useState(profile.chosenDays);
@@ -744,7 +938,7 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast }) {
   };
 
   const exportProgress = () => {
-    const raw = localStorage.getItem(STORAGE_KEY) || "{}";
+    const raw = localStorage.getItem(storageKey) || "{}";
     const blob = new Blob([raw], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -779,7 +973,7 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast }) {
 
   const confirmImport = () => {
     if (!pendingImport) return;
-    localStorage.setItem(STORAGE_KEY, pendingImport.text);
+    localStorage.setItem(storageKey, pendingImport.text);
     window.location.reload();
   };
 
@@ -823,7 +1017,7 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast }) {
 
           <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Back up your progress</div>
           <p style={{ margin: "0 0 10px", fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>
-            Everything is stored only on this device. Save a backup before switching phones or clearing your browser, so you don't lose your progress.
+            Everything is stored on this device. If you're signed in it is also saved to your account. A backup file is still worth keeping before you clear your browser or change phone.
           </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={exportProgress} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Download backup</button>
@@ -1176,6 +1370,32 @@ const QA_TOPICS = [
 
 const STORAGE_KEY = "sofaToSingletrack:progress";
 
+// Several riders can use the app on one device and one account (a parent and their children, say). Each has their own plan and
+// progress. The first rider ("main") keeps the original storage key, so anyone already using the app loses nothing.
+const RIDERS_KEY = "sofaToSingletrack:riders";
+const MAX_RIDERS = 8;
+const keyForRider = (id) => (id === "main" ? STORAGE_KEY : STORAGE_KEY + ":" + id);
+function loadRiderIndex() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RIDERS_KEY) || "null");
+    if (parsed && Array.isArray(parsed.riders) && parsed.riders.length > 0 && parsed.riders.some((r) => r.id === parsed.active)) return parsed;
+  } catch (e) { /* fall through to the default */ }
+  return { active: "main", riders: [{ id: "main", name: "" }] };
+}
+const newRiderId = () => Math.random().toString(36).slice(2, 8);
+
+// A complete, empty snapshot for a new rider, so switching to them clears every trace of the previous rider.
+function blankSaved(name) {
+  const days = ["Tue", "Thu", "Sat"];
+  return {
+    profile: { name: name || "", experience: "none", planType: null, raceId: null, months: null, sessionsPerWeek: 3, chosenDays: days },
+    weeks: buildProgramme(8, days),
+    sessionLog: {}, badges: [], adHocLog: [], notifAsked: false, notifEnabled: false, reminderTime: "17:30", lastFeeling: null,
+    programStart: new Date().toISOString(), sessionDurations: {}, activeTimer: null, adjustmentMins: 0, stage: "onboarding",
+    lastActivityAt: null, comebackNudgeShown: false, raceOfferShown: false, savedAt: 0,
+  };
+}
+
 export default function SofaToSingletrack() {
   const [stage, setStage] = useState("welcome");
   const [showSplash, setShowSplash] = useState(true);
@@ -1220,6 +1440,13 @@ export default function SofaToSingletrack() {
   const [adHocDate, setAdHocDate] = useState("");
   const [adHocMins, setAdHocMins] = useState("30");
   const [adHocFeeling, setAdHocFeeling] = useState("About right");
+  const [voiceOn, setVoiceOn] = useState(() => {
+    try { return localStorage.getItem(VOICE_KEY) !== "off"; } catch (e) { return true; }
+  });
+  const [wakeState, setWakeState] = useState("idle"); // idle | on | unsupported | blocked
+  const wakeRef = useRef(null);
+  const spokenRef = useRef({ tag: "", ids: new Set() });
+  const [raceWeek, setRaceWeek] = useState(null); // the next round this account has entered, from the website
   const [races, setRaces] = useState(FALLBACK_RACES); // the live calendar once fetched, else the fallback
   const [funPrice, setFunPrice] = useState(null); // { early, onTheDay } for the Fun category, from the website
   const [account, setAccount] = useState(null); // null until we know; { signedIn, name } from the website
@@ -1242,6 +1469,12 @@ export default function SofaToSingletrack() {
   // When the rider last actually changed something (not merely opened the app). Used to decide which copy is newer when a
   // device and the account both have progress, so simply opening the app on a second phone never overwrites the first.
   const modifiedAtRef = useRef(0);
+  const suppressBumpUntilRef = useRef(0); // applying a saved copy is not a change made by the rider
+  const [riderIndex, setRiderIndex] = useState(loadRiderIndex);
+  const persistIndex = (next) => {
+    setRiderIndex(next);
+    try { localStorage.setItem(RIDERS_KEY, JSON.stringify(next)); } catch (e) { /* storage unavailable */ }
+  };
   const firstSaveRef = useRef(true);
   const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 
@@ -1270,6 +1503,13 @@ export default function SofaToSingletrack() {
   // Puts a saved snapshot (from this device or from the account) into the app.
   const applySaved = (saved) => {
     modifiedAtRef.current = saved.savedAt || 0;
+    suppressBumpUntilRef.current = Date.now() + 1000;
+    setShowComebackNudge(false);
+    setShowRaceOffer(false);
+    setTimerAlerted(false);
+    setCheckinTarget(null);
+    setCoachNote("");
+    setWelcomeNote("");
     if (saved.profile) setProfile(saved.profile);
     if (saved.weeks && saved.weeks.length) {
       // Rebuild from the canonical PHASES content rather than trusting the
@@ -1291,10 +1531,10 @@ export default function SofaToSingletrack() {
     if (typeof saved.lastFeeling !== "undefined") setLastFeeling(saved.lastFeeling);
     if (saved.programStart) setProgramStart(new Date(saved.programStart));
     if (saved.sessionDurations) setSessionDurations(saved.sessionDurations);
-    if (saved.activeTimer) setActiveTimer(saved.activeTimer);
+    setActiveTimer(saved.activeTimer || null);
     if (typeof saved.adjustmentMins === "number") setAdjustmentMins(saved.adjustmentMins);
     if (saved.stage && saved.stage !== "checkin") setStage(saved.stage);
-    if (typeof saved.lastActivityAt === "number") setLastActivityAt(saved.lastActivityAt);
+    setLastActivityAt(typeof saved.lastActivityAt === "number" ? saved.lastActivityAt : null);
 
     // One-time "the bike misses you" nudge — never repeats once shown, so
     // it doesn't turn into a nag. Fires the first time someone reopens the
@@ -1318,7 +1558,7 @@ export default function SofaToSingletrack() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(keyForRider(riderIndex.active));
       if (raw) applySaved(JSON.parse(raw));
     } catch (e) {
       // no saved progress yet, or storage unavailable
@@ -1331,13 +1571,79 @@ export default function SofaToSingletrack() {
   useEffect(() => {
     if (!loaded) return;
     if (firstSaveRef.current) firstSaveRef.current = false;
-    else modifiedAtRef.current = Date.now();
+    else if (Date.now() > suppressBumpUntilRef.current) modifiedAtRef.current = Date.now();
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPayload()));
+      localStorage.setItem(keyForRider(riderIndex.active), JSON.stringify(buildPayload()));
     } catch (e) {
       // storage unavailable (private browsing, quota) — progress just won't persist
     }
-  }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
+  }, [loaded, riderIndex.active, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
+
+  // The rider's name on the switcher follows what they type in setup.
+  useEffect(() => {
+    if (!loaded || !profile.name) return;
+    const cur = riderIndex.riders.find((r) => r.id === riderIndex.active);
+    if (cur && cur.name !== profile.name) persistIndex({ ...riderIndex, riders: riderIndex.riders.map((r) => (r.id === riderIndex.active ? { ...r, name: profile.name } : r)) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, profile.name, riderIndex.active]);
+
+  // Ask the phone to keep the screen on while a ride timer is running. Not every phone or browser allows it, and it can be refused or
+  // released (low battery, another app), so the app says plainly which it is rather than promising.
+  useEffect(() => {
+    const running = !!activeTimer;
+    if (!running) {
+      if (wakeRef.current) { wakeRef.current.release().catch(() => {}); wakeRef.current = null; }
+      setWakeState("idle");
+      return;
+    }
+    if (!("wakeLock" in navigator)) { setWakeState("unsupported"); return; }
+    let cancelled = false;
+    const acquire = async () => {
+      try {
+        const lock = await navigator.wakeLock.request("screen");
+        if (cancelled) { lock.release().catch(() => {}); return; }
+        wakeRef.current = lock;
+        setWakeState("on");
+        lock.addEventListener("release", () => {
+          if (wakeRef.current === lock) {
+            wakeRef.current = null;
+            if (!cancelled && document.visibilityState === "visible") setWakeState("blocked");
+          }
+        });
+      } catch (e) {
+        if (!cancelled) setWakeState("blocked");
+      }
+    };
+    acquire();
+    // Coming back to the app after the screen was off: ask again.
+    const onVisible = () => { if (document.visibilityState === "visible" && !wakeRef.current) acquire(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      if (wakeRef.current) { wakeRef.current.release().catch(() => {}); wakeRef.current = null; }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTimer ? activeTimer.key : null]);
+
+  // Spoken cues while the timer runs.
+  useEffect(() => {
+    if (!activeTimer || !voiceOn) return;
+    const tag = activeTimer.key + ":" + activeTimer.startedAt;
+    if (spokenRef.current.tag !== tag) spokenRef.current = { tag, ids: new Set() };
+    const { cue, mark } = nextCue(rideCues(activeTimer.targetMins, profile.name), nowTick - activeTimer.startedAt, spokenRef.current.ids);
+    mark.forEach((id) => spokenRef.current.ids.add(id));
+    if (cue) speak(cue.text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowTick, activeTimer, voiceOn]);
+
+  const toggleVoice = () => {
+    const next = !voiceOn;
+    setVoiceOn(next);
+    try { localStorage.setItem(VOICE_KEY, next ? "on" : "off"); } catch (e) { /* storage unavailable */ }
+    if (next) speak("Voice cues on.");
+    else if (speechSupported()) window.speechSynthesis.cancel();
+  };
 
   // The live race calendar from the website (falls back to the built-in list if it can't be reached).
   useEffect(() => {
@@ -1364,11 +1670,23 @@ export default function SofaToSingletrack() {
     return () => { cancelled = true; };
   }, []);
 
-  const pushToAccount = (payload) =>
-    fetch("/api/programme/progress", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ data: payload }) }).catch(() => {});
+  // Signed in and entered in a race? Show where and when, the forecast, and the timings.
+  useEffect(() => {
+    if (!account || !account.signedIn) { setRaceWeek(null); return; }
+    let cancelled = false;
+    fetch("/api/programme/race-week", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => { if (!cancelled) setRaceWeek(json && json.entry ? json.entry : null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [account]);
 
-  // On sign-in, reconcile this device with the account's saved progress: the newer of the two wins, and the older
-  // copy is kept on the device as a backup rather than thrown away.
+  const pushRider = (id, name, payload) =>
+    fetch("/api/programme/progress", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ riderId: id, name: name || "", data: payload }) }).catch(() => {});
+
+  // On sign-in, reconcile this device with the account's saved progress, rider by rider: the newer copy wins, and an older
+  // copy on the device is kept as a backup rather than thrown away. Riders the account has that this device doesn't are
+  // added here; riders on this device the account doesn't have yet are saved to it.
   useEffect(() => {
     if (!loaded || !account || !account.signedIn) return;
     let cancelled = false;
@@ -1376,18 +1694,37 @@ export default function SofaToSingletrack() {
       try {
         const res = await fetch("/api/programme/progress", { credentials: "same-origin" });
         if (!res.ok) return;
-        const { data } = await res.json();
-        const localRaw = localStorage.getItem(STORAGE_KEY);
-        const local = localRaw ? JSON.parse(localRaw) : null;
+        const { riders: remote } = await res.json();
         if (cancelled) return;
-        const decision = decideSync(local, data);
-        if (decision.action === "useAccount") {
-          if (decision.keepBackup) localStorage.setItem(STORAGE_KEY + ":backup", localRaw);
-          applySaved(data);
-          showToast("Your saved progress has been loaded");
-        } else if (decision.action === "saveToAccount") {
-          await pushToAccount(local);
+        let index = loadRiderIndex();
+        let appliedActive = false;
+        let addedOthers = false;
+        const remoteIds = new Set();
+        for (const r of remote || []) {
+          remoteIds.add(r.riderId);
+          const key = keyForRider(r.riderId);
+          const localRaw = localStorage.getItem(key);
+          const local = localRaw ? JSON.parse(localRaw) : null;
+          const decision = decideSync(local, r.data);
+          if (decision.action === "useAccount") {
+            if (decision.keepBackup) localStorage.setItem(key + ":backup", localRaw);
+            if (r.riderId === index.active) { applySaved(r.data); appliedActive = true; }
+            else { localStorage.setItem(key, JSON.stringify(r.data)); addedOthers = true; }
+            if (!index.riders.some((x) => x.id === r.riderId)) index = { ...index, riders: [...index.riders, { id: r.riderId, name: r.name || (r.data && r.data.profile && r.data.profile.name) || "" }] };
+          } else if (decision.action === "saveToAccount") {
+            await pushRider(r.riderId, r.name || (local && local.profile && local.profile.name) || "", local);
+          }
         }
+        for (const rider of index.riders) {
+          if (remoteIds.has(rider.id)) continue;
+          const raw = localStorage.getItem(keyForRider(rider.id));
+          if (!raw) continue;
+          const local = JSON.parse(raw);
+          if (decideSync(local, null).action === "saveToAccount") await pushRider(rider.id, rider.name || (local.profile && local.profile.name) || "", local);
+        }
+        persistIndex(index);
+        if (appliedActive) showToast("Your saved progress has been loaded");
+        else if (addedOthers) showToast("Your family's saved progress has been loaded");
       } catch (e) {
         // offline or not available: the app carries on with what's on the device
       } finally {
@@ -1398,17 +1735,17 @@ export default function SofaToSingletrack() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, account]);
 
-  // While signed in, keep the account copy up to date (a couple of seconds after the last change).
+  // While signed in, keep the account copy of the current rider up to date (a couple of seconds after the last change).
   useEffect(() => {
     if (!loaded || !syncReady || !account || !account.signedIn) return;
-    const t = setTimeout(() => pushToAccount(buildPayload()), 2000);
+    const t = setTimeout(() => pushRider(riderIndex.active, profile.name, buildPayload()), 2000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, syncReady, account, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
+  }, [loaded, syncReady, account, riderIndex.active, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
 
   // A signed-in rider doesn't have to type their name again.
   useEffect(() => {
-    if (account && account.signedIn && account.name && !profile.name && (stage === "welcome" || stage === "onboarding")) {
+    if (account && account.signedIn && account.name && !profile.name && riderIndex.active === "main" && riderIndex.riders.length === 1 && (stage === "welcome" || stage === "onboarding")) {
       setProfile((p) => (p.name ? p : { ...p, name: account.name }));
     }
   }, [account, stage, profile.name]);
@@ -1644,6 +1981,7 @@ export default function SofaToSingletrack() {
   };
 
   const startRideTimer = (target, targetMins) => {
+    if (voiceOn) speak(`Starting your ${targetMins} minute ride.`);
     setActiveTimer({ key: target.key, startedAt: Date.now(), mode: timerMode, targetMins });
     setTimerAlerted(false);
   };
@@ -1742,6 +2080,14 @@ export default function SofaToSingletrack() {
 
     ctx.fillStyle = "#F4F3EF";
     ctx.font = "700 50px Oswald, sans-serif";
+    const who = (profile.name || "").trim().toUpperCase();
+    if (who) {
+      ctx.fillStyle = "#F4F3EF";
+      ctx.font = "600 38px Oswald, sans-serif";
+      ctx.fillText(who, 540, 505);
+      ctx.fillStyle = "#F4F3EF";
+    }
+    ctx.font = "700 50px Oswald, sans-serif";
     ctx.fillText("I'M A REGULAR RIDER NOW", 540, 560);
 
     const stats = [
@@ -1759,6 +2105,10 @@ export default function SofaToSingletrack() {
       ctx.font = "600 20px 'Source Sans 3', sans-serif";
       ctx.fillText(s.label, x, 735);
     });
+
+    ctx.fillStyle = "#B9BDB8";
+    ctx.font = "500 28px 'Source Sans 3', sans-serif";
+    ctx.fillText("Finished " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }), 540, 860);
 
     ctx.fillStyle = "#7A7E79";
     ctx.font = "500 22px 'Source Sans 3', sans-serif";
@@ -1846,6 +2196,50 @@ export default function SofaToSingletrack() {
     setProfile((p) => ({ ...p, sessionsPerWeek: n, chosenDays: defaults }));
   };
 
+  // Family riders: each has their own plan and progress. Switching saves the current rider first, then loads the other.
+  const flushCurrentRider = () => {
+    try { localStorage.setItem(keyForRider(riderIndex.active), JSON.stringify(buildPayload())); } catch (e) { /* storage unavailable */ }
+  };
+  const loadRider = (id, fallbackName) => {
+    let raw = null;
+    try { raw = localStorage.getItem(keyForRider(id)); } catch (e) { /* storage unavailable */ }
+    applySaved(raw ? JSON.parse(raw) : blankSaved(fallbackName || ""));
+    setStep(0);
+  };
+  const switchRider = (id) => {
+    if (id === riderIndex.active) return;
+    flushCurrentRider();
+    const target = riderIndex.riders.find((r) => r.id === id);
+    loadRider(id, target ? target.name : "");
+    persistIndex({ ...riderIndex, active: id });
+  };
+  const addRider = (name) => {
+    const clean = (name || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!clean) return "Please give their first name.";
+    if (riderIndex.riders.length >= MAX_RIDERS) return "That's the most riders one account can hold.";
+    flushCurrentRider();
+    const id = newRiderId();
+    applySaved(blankSaved(clean));
+    setStep(0);
+    persistIndex({ active: id, riders: [...riderIndex.riders, { id, name: clean }] });
+    return null;
+  };
+  const removeRider = (id) => {
+    if (id === "main") return;
+    const who = riderIndex.riders.find((r) => r.id === id);
+    if (!window.confirm(`Remove ${who && who.name ? who.name : "this rider"} and their progress for good?`)) return;
+    try { localStorage.removeItem(keyForRider(id)); localStorage.removeItem(keyForRider(id) + ":backup"); } catch (e) { /* storage unavailable */ }
+    if (account && account.signedIn) fetch("/api/programme/progress", { method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ riderId: id }) }).catch(() => {});
+    const remaining = riderIndex.riders.filter((r) => r.id !== id);
+    if (id === riderIndex.active) {
+      const first = remaining[0];
+      loadRider(first.id, first.name);
+      persistIndex({ active: first.id, riders: remaining });
+    } else {
+      persistIndex({ ...riderIndex, riders: remaining });
+    }
+  };
+
   const changeTextSize = (key) => {
     setTextSize(key);
     try { localStorage.setItem(TEXT_SIZE_KEY, key); } catch (e) { /* storage unavailable */ }
@@ -1879,6 +2273,7 @@ export default function SofaToSingletrack() {
       <SiteNav account={account} />
       <div style={{ position: "relative", zIndex: 1, zoom: TEXT_SCALES[textSize] || 1 }}>
         <AppHeader />
+        <RiderSwitcher index={riderIndex} onSwitch={switchRider} />
 
         {showConfetti && !reduceMotion && <Confetti key={confettiKey} />}
 
@@ -2071,7 +2466,8 @@ export default function SofaToSingletrack() {
           )}
 
           {!(account && !account.signedIn && signInCardHidden) && <AccountCard account={account} onHide={() => { setSignInCardHidden(true); try { localStorage.setItem("sofaToSingletrack:hideSignInCard", "1"); } catch (e) { /* storage unavailable */ } }} />}
-          {showRaceOffer && nextRelevantRace && (
+          {raceWeek && <RaceWeekCard entry={raceWeek} />}
+          {showRaceOffer && nextRelevantRace && !raceWeek && !programmeComplete && (
             <RaceAdvert race={nextRelevantRace} funPrice={funPrice} onDismiss={() => setShowRaceOffer(false)} />
           )}
 
@@ -2153,6 +2549,7 @@ export default function SofaToSingletrack() {
                           : overtime ? `+${formatElapsed(Math.abs(remainingMs))}` : formatElapsed(isDown ? remainingMs : elapsedMs)}
                       </div>
                     </div>
+                    <RideTimerStatus running={running} wakeState={wakeState} voiceOn={voiceOn} onToggleVoice={toggleVoice} />
                     {running ? (
                       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                         <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
@@ -2225,17 +2622,21 @@ export default function SofaToSingletrack() {
           {programmeComplete ? (
             <div>
               <div style={{ background: "#AE5B20", borderRadius: 12, padding: "20px", textAlign: "center", color: "#fff", marginBottom: 16 }}>
-                <div className="display" style={{ fontSize: 18, marginBottom: 6 }}>YOU'RE A REGULAR RIDER NOW</div>
-                <p style={{ margin: 0, fontSize: 16 }}>That's the real win. Racing from here is entirely optional.</p>
+                <div className="display" style={{ fontSize: 18, marginBottom: 6 }}>YOU'VE GRADUATED{profile.name ? ", " + profile.name.toUpperCase() : ""}</div>
+                <p style={{ margin: 0, fontSize: 16 }}>You're a regular rider now. That's the real win, and racing from here is entirely optional.</p>
                 <button onClick={handleShareFinishCard} style={{ marginTop: 14, background: "#14171A", border: "none", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>📸 Share your achievement</button>
               </div>
-              <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid #2b2b2b" }}>
-                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Fancy trying a race?</div>
-                <p style={{ fontSize: 15, color: "#B9BDB8", margin: "0 0 10px", lineHeight: 1.4 }}>
-                  {selectedRace ? <>You could line up at <strong>{selectedRace.name}</strong>, {selectedRace.venue}.</> : "There's a full MTB East fixture list you could dip into whenever you're ready."}
-                  {" "}You don't need to compete to come along — plenty of riders spectate at a race first.
-                </p>
-                <a href="/league" style={{ ...navBtn, marginBottom: 8, display: "block", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>See the race calendar</a>
+              {raceWeek ? null : nextRelevantRace ? (
+                <RaceAdvert race={nextRelevantRace} funPrice={funPrice} />
+              ) : (
+                <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid #2b2b2b" }}>
+                  <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Fancy trying a race?</div>
+                  <p style={{ fontSize: 15, color: "#B9BDB8", margin: "0 0 10px", lineHeight: 1.4 }}>There's a full MTB East fixture list you could dip into whenever you're ready. You don't need to compete to come along: plenty of riders spectate at a race first.</p>
+                  <a href="/league" style={{ ...navBtn, marginBottom: 0, display: "block", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>See the race calendar</a>
+                </div>
+              )}
+              <MarshalNote card />
+              <div style={{ marginBottom: 12 }}>
                 <button onClick={() => setStage("coachQA")} style={{ background: "none", border: "1px solid #E8792B", color: "#E8792B", borderRadius: 10, width: "100%", padding: "12px 0", fontSize: 16, fontWeight: 600, cursor: "pointer" }}>Talk to a coach about racing</button>
               </div>
               <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", border: "1px solid #2b2b2b" }}>
@@ -2353,8 +2754,9 @@ export default function SofaToSingletrack() {
 
           <TipsAndAdvice />
 
+          <FamilyPanel index={riderIndex} onSwitch={switchRider} onAdd={addRider} onRemove={removeRider} />
           <TextSizeControl value={textSize} onChange={changeTextSize} />
-          <SettingsSection profile={profile} setProfile={setProfile} weeks={weeks} setWeeks={setWeeks} showToast={showToast} />
+          <SettingsSection storageKey={keyForRider(riderIndex.active)} profile={profile} setProfile={setProfile} weeks={weeks} setWeeks={setWeeks} showToast={showToast} />
         </div>
       )}
 
