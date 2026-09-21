@@ -22,17 +22,49 @@ PWA build: coach notes come from the static ./data/coach-scenarios.json lookup
   the browser.
 */
 
-const MTB_EAST_RACES = [
-  { id: 1, name: "Round 1", venue: "Potash, Rochford", date: "2027-03-14" },
-  { id: 2, name: "Round 2", venue: "Potash, Rochford", date: "2027-04-11" },
-  { id: 3, name: "Round 3", venue: "Gallows Green, Lindsell", date: "2027-05-09" },
-  { id: 4, name: "Round 4", venue: "Potash, Rochford", date: "2027-06-13" },
-  { id: 5, name: "Round 5", venue: "Gallows Green, Lindsell", date: "2027-07-11" },
-  { id: 6, name: "Round 6", venue: "Potash, Rochford", date: "2027-09-12" },
-  { id: 7, name: "Round 7", venue: "Potash, Rochford", date: "2027-10-10" },
-  { id: 8, name: "Round 8", venue: "Gallows Green, Lindsell", date: "2027-11-07" },
+// Used only when the website's live calendar can't be reached (offline, or the very first load). The live list comes from
+// /api/rounds on the same site, so dates here can never drift from the League page: this copy is just a safety net.
+const FALLBACK_RACES = [
+  { id: 1, name: "Round 1", venue: "Potash Woods, Rochford", date: "2027-03-14" },
+  { id: 2, name: "Round 2", venue: "Potash Woods, Rochford", date: "2027-04-04" },
+  { id: 3, name: "Round 3", venue: "Gallows Green, Lindsell", date: "2027-04-18" },
+  { id: 4, name: "Round 4", venue: "Potash Woods, Rochford", date: "2027-05-09" },
+  { id: 5, name: "Round 5", venue: "Gallows Green, Lindsell", date: "2027-05-23" },
+  { id: 6, name: "Round 6", venue: "Potash Woods, Rochford", date: "2027-06-06" },
+  { id: 7, name: "Round 7", venue: "Potash Woods, Rochford", date: "2027-07-04" },
 ];
 
+// Turns the website's /api/rounds answer into the shape the app uses. A round's number is its id, so a rider's saved
+// choice ("Round 3") keeps meaning the same round.
+function racesFromApi(json) {
+  if (!json || !Array.isArray(json.rounds) || json.rounds.length === 0) return null;
+  const rows = json.rounds
+    .filter((r) => r && typeof r.date === "string" && Number.isInteger(r.round))
+    .map((r) => ({ id: r.round, name: r.name || `Round ${r.round}`, venue: r.venue || "", date: r.date }));
+  return rows.length ? rows : null;
+}
+
+// How the visitor has set up the main website (text size, reduced motion), read from the same cookie the site uses, so
+// the app follows their choice without asking again.
+function readDisplayPrefs() {
+  try {
+    const hit = document.cookie.split("; ").find((c) => c.startsWith("mtbe_display="));
+    const p = new URLSearchParams(hit ? decodeURIComponent(hit.slice("mtbe_display=".length)) : "");
+    return { text: p.get("text") || "standard", motion: p.get("motion") || "system" };
+  } catch (e) {
+    return { text: "standard", motion: "system" };
+  }
+}
+// Decides what to do when a device and a signed-in account may both hold progress. The copy that was changed most recently
+// wins; if the account's copy wins, the device's older copy is kept as a backup. Opening the app never counts as a change.
+function decideSync(local, server) {
+  const hasLocal = !!local && ((local.stage && local.stage !== "welcome") || (local.sessionLog && Object.keys(local.sessionLog).length > 0));
+  if (server && (!hasLocal || (server.savedAt || 0) > (local.savedAt || 0))) return { action: "useAccount", keepBackup: hasLocal };
+  if (hasLocal) return { action: "saveToAccount" };
+  return { action: "nothing" };
+}
+const TEXT_SCALES = { standard: 1, large: 1.12, larger: 1.25, largest: 1.4 };
+const TEXT_SIZE_KEY = "sofaToSingletrack:textSize";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // One canonical 3-month (12-week) plan. Shorter programmes (1 or 2 months)
@@ -136,7 +168,7 @@ function EffortDots({ effort }) {
           <span key={n} style={{ width: 6, height: 6, borderRadius: "50%", background: n <= meta.level ? meta.color : "#3a3a3a" }} />
         ))}
       </div>
-      <span style={{ fontSize: 12, fontWeight: 600, color: meta.color }}>{meta.label}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: meta.color }}>{meta.label}</span>
     </div>
   );
 }
@@ -262,7 +294,7 @@ function GlossaryText({ text }) {
   const parts = splitGlossaryText(text);
   return (
     <>
-      <p style={{ fontSize: 14, color: "#F4F3EF", lineHeight: 1.5, margin: "4px 0 12px" }}>
+      <p style={{ fontSize: 16, color: "#F4F3EF", lineHeight: 1.5, margin: "4px 0 12px" }}>
         {parts.map((part, i) =>
           part.term ? (
             <button key={i} onClick={() => setOpenTerm(openTerm === part.term ? null : part.term)}
@@ -275,7 +307,7 @@ function GlossaryText({ text }) {
         )}
       </p>
       {openTerm && (
-        <p style={{ fontSize: 13, color: "#1B8A82", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "-6px 0 12px", lineHeight: 1.4 }}>
+        <p style={{ fontSize: 15, color: "#1B8A82", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "-6px 0 12px", lineHeight: 1.4 }}>
           💡 {GLOSSARY[openTerm]}
         </p>
       )}
@@ -291,9 +323,9 @@ function PreRideChecklist() {
   return (
     <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
       <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Before you head out</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Before you head out</span>
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11.5, color: "#868A85" }}>{doneCount}/{PRE_RIDE_CHECKLIST.length}</span>
+          <span style={{ fontSize: 13, color: "#868A85" }}>{doneCount}/{PRE_RIDE_CHECKLIST.length}</span>
           <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
         </span>
       </button>
@@ -302,7 +334,7 @@ function PreRideChecklist() {
           {PRE_RIDE_CHECKLIST.map((item, i) => (
             <label key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i > 0 ? "1px solid #2b2b2b" : "none", cursor: "pointer" }}>
               <input type="checkbox" checked={checked[i]} onChange={() => toggle(i)} style={{ width: 16, height: 16, accentColor: "#1B8A82", flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: checked[i] ? "#868A85" : "#F4F3EF", textDecoration: checked[i] ? "line-through" : "none" }}>{item}</span>
+              <span style={{ fontSize: 15, color: checked[i] ? "#868A85" : "#F4F3EF", textDecoration: checked[i] ? "line-through" : "none" }}>{item}</span>
             </label>
           ))}
         </div>
@@ -315,14 +347,14 @@ function BikeSetupCheck({ bordered = true }) {
   const [open, setOpen] = useState(null);
   const content = (
     <>
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Quick bike setup check</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Quick bike setup check</div>
       {BIKE_SETUP_STEPS.map((s, i) => (
         <div key={i} style={{ borderBottom: i < BIKE_SETUP_STEPS.length - 1 ? "1px solid #2b2b2b" : "none" }}>
-          <button onClick={() => setOpen(open === i ? null : i)} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "#F4F3EF", padding: "10px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <button onClick={() => setOpen(open === i ? null : i)} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "#F4F3EF", padding: "10px 0", fontSize: 15, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <span>{s.title}</span>
             <span style={{ color: "#E8792B", fontSize: 16, flexShrink: 0 }}>{open === i ? "–" : "+"}</span>
           </button>
-          {open === i && <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#B9BDB8", lineHeight: 1.5 }}>{s.body}</p>}
+          {open === i && <p style={{ margin: "0 0 12px", fontSize: 14, color: "#B9BDB8", lineHeight: 1.5 }}>{s.body}</p>}
         </div>
       ))}
     </>
@@ -376,10 +408,97 @@ function TopoBackground() {
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none",
-        backgroundImage: "url(/brand/topo-bg.webp)", backgroundSize: "cover",
+        backgroundImage: `url(${import.meta.env.BASE_URL}brand/topo-bg.webp)`, backgroundSize: "cover",
         backgroundPosition: "center", opacity: 0.85,
       }}
     />
+  );
+}
+
+function daysUntil(dateStr) {
+  const ms = new Date(dateStr + "T00:00:00").getTime() - new Date().setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round(ms / 86400000));
+}
+
+// A small advert for the next MTB East race, shown once a rider is a couple of weeks into the programme.
+function RaceAdvert({ race, funPrice, onDismiss }) {
+  const days = daysUntil(race.date);
+  const dateText = new Date(race.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, marginBottom: 16, border: "1px solid #E8792B", overflow: "hidden", position: "relative" }}>
+      <div className="display" style={{ background: "#E8792B", color: "#111111", padding: "8px 16px", fontSize: 16, letterSpacing: "0.06em" }}>
+        NEXT MTB EAST RACE · {days === 0 ? "TODAY" : days === 1 ? "TOMORROW" : days + " DAYS TO GO"}
+      </div>
+      <button onClick={onDismiss} aria-label="Dismiss this" style={{ position: "absolute", top: 0, right: 0, width: 44, height: 44, background: "none", border: "none", color: "#111111", fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>
+      <div style={{ padding: "14px 16px 16px" }}>
+        <div className="display" style={{ fontSize: 22, lineHeight: 1.15 }}>{race.name}, {race.venue}</div>
+        <div style={{ fontSize: 15, color: "#B9BDB8", margin: "2px 0 10px" }}>{dateText}</div>
+        <p style={{ fontSize: 15, lineHeight: 1.5, margin: "0 0 14px" }}>
+          You've got the base fitness now. The Fun category is a friendly, shorter race with no series standings{funPrice ? <>, from <strong>£{funPrice.early}</strong></> : null}. Under 16? You race in your age category. Or just come and watch first: spectators are very welcome.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <a href="/account/upcoming" style={{ background: "#E8792B", color: "#111111", fontWeight: 700, fontSize: 15, textDecoration: "none", padding: "12px 18px", borderRadius: 8, minHeight: 44, boxSizing: "border-box", display: "inline-flex", alignItems: "center" }}>Enter this race</a>
+          <a href="/league" style={{ border: "1px solid #E8792B", color: "#E8792B", fontWeight: 600, fontSize: 15, textDecoration: "none", padding: "12px 18px", borderRadius: 8, minHeight: 44, boxSizing: "border-box", display: "inline-flex", alignItems: "center" }}>Race details</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Asks visitors who aren't signed in to sign in with their MTB east account, so their progress follows them between devices.
+function AccountCard({ account, onHide }) {
+  if (!account) return null;
+  if (account.signedIn) {
+    return (
+      <div style={{ fontSize: 16, color: "#B9BDB8", marginBottom: 14, lineHeight: 1.5 }}>
+        ✓ Signed in{account.name ? " as " + account.name : ""}. Your progress is saved to your account, so it follows you to any device.
+      </div>
+    );
+  }
+  return (
+    <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "1px solid #2b2b2b", position: "relative" }}>
+      <button onClick={onHide} aria-label="Hide this" style={{ position: "absolute", top: 0, right: 0, width: 44, height: 44, background: "none", border: "none", color: "#868A85", fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>
+      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4, paddingRight: 36 }}>Keep your progress on every device</div>
+      <p style={{ fontSize: 15, lineHeight: 1.5, color: "#B9BDB8", margin: "0 0 12px" }}>
+        Sign in with your MTB east account (the same one you use to enter races) and your progress is saved for you. It's free, and the app still works without it.
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        <a href="/account/login?next=/programme" style={{ background: "#0F5F59", color: "#ffffff", fontWeight: 700, fontSize: 15, textDecoration: "none", padding: "12px 18px", borderRadius: 8, minHeight: 44, boxSizing: "border-box", display: "inline-flex", alignItems: "center" }}>Sign in</a>
+        <a href="/account/signup" style={{ border: "1px solid #2b2b2b", color: "#F4F3EF", fontWeight: 600, fontSize: 15, textDecoration: "none", padding: "12px 18px", borderRadius: 8, minHeight: 44, boxSizing: "border-box", display: "inline-flex", alignItems: "center" }}>Create an account</a>
+      </div>
+    </div>
+  );
+}
+
+// The health note, shown before a rider starts. Plain and specific rather than a line of small print.
+function GpNote() {
+  return (
+    <div role="note" style={{ background: "#161616", border: "2px solid #E8792B", borderRadius: 12, padding: "16px 18px", marginBottom: 20 }}>
+      <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>Check with your GP first if</div>
+      <ul style={{ margin: "0 0 10px", paddingLeft: 20, fontSize: 16, lineHeight: 1.6 }}>
+        <li>you have a health condition, or you're pregnant or recovering from an injury or illness</li>
+        <li>you take medication, or you've been told to be careful with exercise</li>
+        <li>you haven't been active for a long time, or you're not sure</li>
+      </ul>
+      <p style={{ margin: "0 0 8px", fontSize: 16, lineHeight: 1.5 }}>
+        Stop and get medical advice if you feel chest pain, dizziness, unusual breathlessness or pain that doesn't ease.
+      </p>
+      <p style={{ margin: 0, fontSize: 16, lineHeight: 1.5 }}>
+        Under 16? Ask a parent or guardian to read this and to ride with you where needed. Always wear a helmet.
+      </p>
+    </div>
+  );
+}
+
+function TextSizeControl({ value, onChange }) {
+  const options = [["standard", "Standard"], ["large", "Large"], ["larger", "Larger"]];
+  return (
+    <div role="group" aria-label="Text size" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+      <span style={{ fontSize: 15, color: "#B9BDB8", marginRight: 4 }}>Text size</span>
+      {options.map(([key, label]) => (
+        <button key={key} onClick={() => onChange(key)} aria-pressed={value === key} style={{ minHeight: 44, padding: "8px 14px", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer", background: value === key ? "#0F5F59" : "#161616", color: "#ffffff", border: "1px solid " + (value === key ? "#0F5F59" : "#2b2b2b") }}>{label}</button>
+      ))}
+    </div>
   );
 }
 
@@ -389,15 +508,86 @@ function InstallPrompt({ deferredPrompt, onInstall, isIOS, isStandalone }) {
   return (
     <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "1px solid #2b2b2b", display: "flex", alignItems: "center", gap: 12 }}>
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Install this app</div>
-        <div style={{ fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 2 }}>Install this app</div>
+        <div style={{ fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>
           {isIOS ? <>Tap the Share icon, then "Add to Home Screen".</> : "Add it to your home screen for a full-screen, offline-friendly experience."}
         </div>
       </div>
       {deferredPrompt && (
-        <button onClick={onInstall} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>Install</button>
+        <button onClick={onInstall} style={{ background: "#0F5F59", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>Install</button>
       )}
     </div>
+  );
+}
+
+const SITE_NAV_LINKS = [
+  { href: "/league", label: "League" },
+  { href: "/festival", label: "Festival" },
+  { href: "/sportive", label: "Sportive" },
+  { href: "/coaching", label: "Coaching" },
+  { href: "/programme", label: "Sofa to Singletrack", current: true },
+  { href: "/programme/games", label: "Apps" },
+  { href: "/academy", label: "Academy" },
+  { href: "/results", label: "Results" },
+  { href: "/news", label: "News" },
+  { href: "/partners", label: "Partners" },
+  { href: "/about", label: "About" },
+];
+
+// Matches the real site header (SiteHeader.tsx + HeaderAuthButtons.tsx in
+// the website repo) almost exactly — same 64px row, Oswald text-sm links,
+// #111111/#c4470d, and critically the same real logo + a single prominent
+// auth CTA on the right (the real header dropped its second redundant
+// "Enter a Race" button — both pointed at the same login page — so this
+// mirrors that). An earlier version matched only the nav links' own size
+// and colour and still read as "the site shrinking" once embedded, because
+// the real header's visual weight comes mostly from the logo lockup and
+// the CTA, not the link row. It shows "My account" when the visitor is
+// signed in to their MTB east account (asked of the website via
+// /api/programme/me, which shares the site's own cookies), otherwise
+// "Rider Login", which returns them here after signing in.
+function SiteNav({ account }) {
+  const linkStyle = (current) => ({
+    flexShrink: 0, color: current ? "#e6530f" : "#ffffff", textDecoration: "none",
+    fontSize: 14, letterSpacing: "0.02em", padding: "8px 12px", whiteSpace: "nowrap",
+  });
+  return (
+    <header style={{ position: "sticky", top: 0, zIndex: 50, background: "#111111", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+      <div style={{
+        maxWidth: 1280, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center",
+        justifyContent: "space-between", gap: 16, height: 64, fontFamily: "'Oswald', sans-serif",
+      }}>
+        <a href="/" style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
+          {/* Root-absolute, not BASE_URL — this borrows the real site's own
+              /brand/logo-on-black.png (it isn't one of this app's bundled
+              assets), which only resolves because this bar is always
+              embedded on the real domain. */}
+          <img
+            src="/brand/logo-on-black.png"
+            alt="MTB east — home"
+            style={{ height: 44, width: "auto", display: "block" }}
+          />
+        </a>
+        <nav aria-label="MTB East site" style={{ display: "flex", alignItems: "center", gap: 2, overflowX: "auto", minWidth: 0 }}>
+          {SITE_NAV_LINKS.map((link) => (
+            <a key={link.href} href={link.href} style={linkStyle(link.current)}>
+              {link.label}
+            </a>
+          ))}
+        </nav>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <a
+            href={account && account.signedIn ? "/account" : "/account/login?next=/programme"}
+            style={{
+              fontSize: 14, padding: "8px 16px", background: "#c4470d", color: "#ffffff",
+              textDecoration: "none", whiteSpace: "nowrap",
+            }}
+          >
+            {account && account.signedIn ? "My account" : "Rider Login"}
+          </a>
+        </div>
+      </div>
+    </header>
   );
 }
 
@@ -405,8 +595,8 @@ function AppHeader() {
   return (
     <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 20px", borderBottom: "1px solid #1c1c1c" }}>
       <img src={`${import.meta.env.BASE_URL}brand/header-mark.png`} alt="" width={24} height={24} style={{ display: "block" }} />
-      <span className="display" style={{ fontSize: 13, letterSpacing: "0.08em", color: "#F4F3EF" }}>SOFA TO SINGLETRACK</span>
-      <span style={{ fontSize: 11, color: "#B9BDB8", fontWeight: 600 }}>· MTB EAST</span>
+      <span className="display" style={{ fontSize: 15, letterSpacing: "0.08em", color: "#F4F3EF" }}>SOFA TO SINGLETRACK</span>
+      <span style={{ fontSize: 13, color: "#B9BDB8", fontWeight: 600 }}>· MTB EAST</span>
     </div>
   );
 }
@@ -423,18 +613,19 @@ function SplashScreen() {
 const FAQS = [
   { q: "Do I need to already own a mountain bike?", a: "No. You can start by using any safe, working bike you have access to. A mountain bike will make off-road riding more comfortable, but the early sessions can be done on paths, roads, and gentle trails." },
   { q: "I have not ridden a bike in years. Is this really for me?", a: "Absolutely. The programme is designed for people starting from zero, returning after a long break, or rebuilding confidence. You begin gently and progress in small, manageable steps." },
+  { q: "Should I check with my doctor before I start?", a: "If you have a health condition, are pregnant, are recovering from an injury or illness, take medication, or have not been active for a long time, yes: speak to your GP first. Whoever you are, stop and get medical advice if you feel chest pain, dizziness, unusual breathlessness or pain that does not ease. If you are under 16, ask a parent or guardian to read this and to ride with you where needed." },
   { q: "What if I cannot ride very far yet?", a: "That is exactly where you are meant to start. Early rides may be short, with plenty of recovery and walking breaks if needed. There is no expectation to keep up with experienced riders." },
   { q: "Do I need to be fit before I begin?", a: "No. The goal is to help you become fitter over time. You only need to be comfortable starting at your own level and taking things gradually." },
   { q: "What does \"singletrack\" mean?", a: "Singletrack is a narrow off-road trail, usually wide enough for one rider at a time. It can be a smooth woodland path, dirt, gravel, roots, or gentle twists. You will build towards it rather than being sent straight onto technical trails." },
   { q: "Is mountain biking dangerous?", a: "Like any activity, it has risks, but you can reduce them a lot by learning gradually, wearing a helmet, checking your bike, choosing suitable trails, and knowing that it is always fine to slow down or walk a section." },
-  { q: "What if I am nervous about falling off?", a: "That is very normal. The app should teach confidence skills progressively: braking, balance, cornering, getting on and off the bike, and choosing a safe line. Walking a feature is always a smart option, never a failure." },
+  { q: "What if I am nervous about falling off?", a: "That is very normal. The programme builds your confidence step by step: braking, balance, cornering, getting on and off the bike, and choosing a safe line. Walking a tricky bit is always a smart option, never a failure." },
   { q: "Do I have to ride down steep hills or over jumps?", a: "No. You choose your own challenge level. There are no jumps, drops, or steep descents required to complete the programme. Many riders enjoy mountain biking for fitness, fresh air, and social rides without wanting technical features." },
   { q: "What equipment do I need to get started?", a: "A safe bike, a properly fitted helmet, comfortable clothing, water, and something to repair a puncture are the basics. You do not need expensive shoes, clothing, suspension, or race equipment to begin." },
   { q: "What type of mountain bike should I buy?", a: "Do not rush into buying one. If you decide to, a comfortable hardtail mountain bike from a reputable shop is often a great first choice." },
   { q: "Can I do the programme on an e-bike?", a: "Yes, provided it is legal and suitable for the terrain where you ride. An e-bike can make hills and longer rides feel more approachable while still building skills, confidence, and fitness. Sessions can be based on time and effort, not only distance." },
   { q: "What if I need to stop, repeat a week, or miss a few sessions?", a: "That is completely fine. Life happens. You can repeat sessions, take extra rest, or resume when you are ready. Progress is not ruined by a missed week." },
-  { q: "How much time will I need each week?", a: "The programme should fit around real life. A beginner-friendly plan might include two or three short rides per week, if you are struggling, you can note this when logging a ride and the system will reduce the level of workout in the next session." },
-  { q: "Where can I safely ride?", a: "You do not need mountains on your doorstep. Start with quiet cycle paths, parks, bridleways, forest roads, towpaths, and easy local trails where cycling is permitted. The app should clearly explain trail access, signs, and local etiquette." },
+  { q: "How much time will I need each week?", a: "The programme fits around real life: two or three short rides a week, on the days you choose. If a ride felt too hard, say so when you log it and your next sessions get a little shorter. If it felt easy, they get a little longer." },
+  { q: "Where can I safely ride?", a: "You do not need mountains on your doorstep. Start with quiet cycle paths, parks, bridleways, forest roads, towpaths, and easy local trails where cycling is permitted. Look out for signs at the entrance, give way to walkers and horse riders, leave gates as you find them, and take your litter home." },
   { q: "What if I do not have anyone to ride with?", a: "You can complete the whole programme solo. It can also help you find beginner-friendly group rides, bike shops, clubs, or event communities when you feel ready. Riding with others is optional, not a requirement." },
   { q: "Do I have to race at the end?", a: "No. Racing is one possible destination, not the purpose of the programme. Your finish line might be feeling fitter, exploring local trails, riding with friends, commuting, or simply enjoying being outside." },
   { q: "What is an MTB \"fun race,\" and can a beginner enter one?", a: "A fun race is an informal event where the emphasis is on completing the course and enjoying the day. Riders of mixed experience. You can aim for one when it feels exciting, or come along to watch first." },
@@ -448,22 +639,22 @@ function FAQSection({ bordered = true }) {
   const visible = expanded ? FAQS : FAQS.slice(0, 3);
   const content = (
     <>
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Common questions</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Common questions</div>
       <div style={{ position: "relative" }}>
         {visible.map((f, i) => (
           <div key={i} style={{ borderBottom: i < visible.length - 1 ? "1px solid #2b2b2b" : "none" }}>
-            <button onClick={() => setOpen(open === i ? null : i)} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "#F4F3EF", padding: "12px 0", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <button onClick={() => setOpen(open === i ? null : i)} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "#F4F3EF", padding: "12px 0", fontSize: 16, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <span>{f.q}</span>
               <span style={{ color: "#E8792B", fontSize: 16, flexShrink: 0 }}>{open === i ? "–" : "+"}</span>
             </button>
-            {open === i && <p style={{ margin: "0 0 12px", fontSize: 13, color: "#B9BDB8", lineHeight: 1.5 }}>{f.a}</p>}
+            {open === i && <p style={{ margin: "0 0 12px", fontSize: 15, color: "#B9BDB8", lineHeight: 1.5 }}>{f.a}</p>}
           </div>
         ))}
         {!expanded && (
           <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 36, background: "linear-gradient(to bottom, rgba(22,22,22,0), #161616)", pointerEvents: "none" }} />
         )}
       </div>
-      <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", textAlign: "center", background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: "10px 0 0" }}>
+      <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", textAlign: "center", background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 15, cursor: "pointer", padding: "10px 0 0" }}>
         {expanded ? "Show less ↑" : `Read more (${FAQS.length - 3} more) ↓`}
       </button>
     </>
@@ -484,29 +675,29 @@ function TipsAndAdvice() {
   return (
     <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
       <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Tips & advice</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Tips & advice</span>
         <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
       </button>
       {!expanded && (
-        <p style={{ margin: "10px 0 0", fontSize: 12, color: "#868A85", lineHeight: 1.4 }}>Fuelling, bike care, trail etiquette, bike setup, and common questions</p>
+        <p style={{ margin: "10px 0 0", fontSize: 14, color: "#868A85", lineHeight: 1.4 }}>Fuelling, bike care, trail etiquette, bike setup, and common questions</p>
       )}
       {expanded && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fuelling tip</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fuelling tip</div>
           <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{NUTRITION_TIPS[tipIndex]}</p>
-          <button onClick={() => setTipIndex((i) => (i + 1) % NUTRITION_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
+          <button onClick={() => setTipIndex((i) => (i + 1) % NUTRITION_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 15, cursor: "pointer", padding: 0 }}>Next tip →</button>
 
           <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Bike care tip</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Bike care tip</div>
           <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{BIKE_CARE_TIPS[bikeTipIndex]}</p>
-          <button onClick={() => setBikeTipIndex((i) => (i + 1) % BIKE_CARE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
+          <button onClick={() => setBikeTipIndex((i) => (i + 1) % BIKE_CARE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 15, cursor: "pointer", padding: 0 }}>Next tip →</button>
 
           <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Trail etiquette</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Trail etiquette</div>
           <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{TRAIL_ETIQUETTE_TIPS[trailTipIndex]}</p>
-          <button onClick={() => setTrailTipIndex((i) => (i + 1) % TRAIL_ETIQUETTE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>Next tip →</button>
+          <button onClick={() => setTrailTipIndex((i) => (i + 1) % TRAIL_ETIQUETTE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 15, cursor: "pointer", padding: 0 }}>Next tip →</button>
 
           <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
@@ -595,59 +786,59 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast }) {
   return (
     <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
       <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Settings</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Settings</span>
         <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
       </button>
       {expanded && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Training days</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Training days</div>
           {!editingDays ? (
             <>
-              <p style={{ margin: "0 0 10px", fontSize: 13, color: "#F4F3EF" }}>{profile.chosenDays.join(", ")}</p>
-              <button onClick={startEditDays} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Change days</button>
+              <p style={{ margin: "0 0 10px", fontSize: 15, color: "#F4F3EF" }}>{profile.chosenDays.join(", ")}</p>
+              <button onClick={startEditDays} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Change days</button>
             </>
           ) : (
             <>
-              <p style={{ margin: "0 0 10px", fontSize: 12, color: "#B9BDB8" }}>Pick exactly {profile.sessionsPerWeek} — tap to select or deselect.</p>
+              <p style={{ margin: "0 0 10px", fontSize: 14, color: "#B9BDB8" }}>Pick exactly {profile.sessionsPerWeek} — tap to select or deselect.</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                 {WEEKDAYS.map((day) => {
                   const selected = draftDays.includes(day);
                   const disabled = !selected && draftDays.length >= profile.sessionsPerWeek;
                   return (
                     <button key={day} onClick={() => toggleDraftDay(day)} disabled={disabled}
-                      style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid " + (selected ? "#E8792B" : "#2b2b2b"), background: selected ? "#E8792B" : "#0d0d0d", color: selected ? "#fff" : disabled ? "#868A85" : "#F4F3EF", fontSize: 13, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>
+                      style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid " + (selected ? "#AE5B20" : "#2b2b2b"), background: selected ? "#AE5B20" : "#0d0d0d", color: selected ? "#fff" : disabled ? "#868A85" : "#F4F3EF", fontSize: 15, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>
                       {day}
                     </button>
                   );
                 })}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={saveDays} disabled={draftDays.length !== profile.sessionsPerWeek} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: draftDays.length !== profile.sessionsPerWeek ? "default" : "pointer", opacity: draftDays.length !== profile.sessionsPerWeek ? 0.5 : 1 }}>Save</button>
-                <button onClick={() => setEditingDays(false)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                <button onClick={saveDays} disabled={draftDays.length !== profile.sessionsPerWeek} style={{ background: "#0F5F59", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: draftDays.length !== profile.sessionsPerWeek ? "default" : "pointer", opacity: draftDays.length !== profile.sessionsPerWeek ? 0.5 : 1 }}>Save</button>
+                <button onClick={() => setEditingDays(false)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
               </div>
             </>
           )}
 
           <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Back up your progress</div>
-          <p style={{ margin: "0 0 10px", fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Back up your progress</div>
+          <p style={{ margin: "0 0 10px", fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>
             Everything is stored only on this device. Save a backup before switching phones or clearing your browser, so you don't lose your progress.
           </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={exportProgress} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Download backup</button>
-            <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Restore backup</button>
+            <button onClick={exportProgress} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Download backup</button>
+            <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Restore backup</button>
             <input ref={fileInputRef} type="file" accept="application/json" onChange={handleFileSelected} style={{ display: "none" }} />
           </div>
 
           {pendingImport && (
             <div style={{ marginTop: 12, background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 8, padding: "12px 14px" }}>
-              <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "#F4F3EF", lineHeight: 1.4 }}>
+              <p style={{ margin: "0 0 10px", fontSize: 14, color: "#F4F3EF", lineHeight: 1.4 }}>
                 This backup is for <strong>{pendingImport.name}</strong>, with {pendingImport.ridesLogged} session{pendingImport.ridesLogged === 1 ? "" : "s"} logged. Restoring it will replace your current progress on this device — this can't be undone.
               </p>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={confirmImport} style={{ background: "#E8792B", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Replace my progress</button>
-                <button onClick={() => setPendingImport(null)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                <button onClick={confirmImport} style={{ background: "#AE5B20", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Replace my progress</button>
+                <button onClick={() => setPendingImport(null)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
               </div>
             </div>
           )}
@@ -882,21 +1073,21 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
   return (
     <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Your calendar</div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#F4F3EF" }}>{totalRidesLogged}/{totalSessions} sessions logged</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Your calendar</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "#F4F3EF" }}>{totalRidesLogged}/{totalSessions} sessions logged</div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "12px 0 8px" }}>
         <button onClick={() => setMonthOffset((m) => Math.max(minOffset, m - 1))} disabled={monthOffset <= minOffset} style={monthNavBtn}>‹</button>
-        <div className="display" style={{ fontSize: 13, color: "#F4F3EF" }}>{monthLabel}</div>
+        <div className="display" style={{ fontSize: 15, color: "#F4F3EF" }}>{monthLabel}</div>
         <button onClick={() => setMonthOffset((m) => Math.min(maxOffset, m + 1))} disabled={monthOffset >= maxOffset} style={monthNavBtn}>›</button>
       </div>
 
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
         {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-          <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "#868A85" }}>{d}</div>
+          <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: "#868A85" }}>{d}</div>
         ))}
-        <div style={{ width: 34, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: "#868A85" }}>TIME</div>
+        <div style={{ width: 34, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "#868A85" }}>TIME</div>
       </div>
 
       {rows.map((row, ri) => {
@@ -926,7 +1117,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                     onClick={() => hasPreviewContent && setPreviewKey((cur) => (cur === k ? null : k))}
                     style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "3px 0", borderRadius: 6, border: isToday ? "1px solid #E8792B" : "1px solid transparent", cursor: hasPreviewContent ? "pointer" : "default" }}
                   >
-                    <span style={{ fontSize: 12, color: "#F4F3EF" }}>{d.getDate()}</span>
+                    <span style={{ fontSize: 14, color: "#F4F3EF" }}>{d.getDate()}</span>
                     <div style={{ display: "flex", gap: 2 }}>
                       {info && (
                         <div style={{ width: 5, height: 5, borderRadius: "50%", background: info.status === "skipped" ? "transparent" : dotColor[info.status], border: info.status === "skipped" ? "1px solid #5c5f5c" : "none" }} />
@@ -938,14 +1129,14 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                     <div style={{ position: "absolute", zIndex: 20, bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 6, width: 160, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 8, padding: "8px 10px", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}>
                       {info && (
                         <>
-                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#E8792B", marginBottom: 2 }}>{info.name}</div>
-                          <div style={{ fontSize: 11.5, color: "#B9BDB8", lineHeight: 1.4 }}>{info.detail}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#E8792B", marginBottom: 2 }}>{info.name}</div>
+                          <div style={{ fontSize: 13, color: "#B9BDB8", lineHeight: 1.4 }}>{info.detail}</div>
                         </>
                       )}
                       {hasAdHoc && adHocForDay.map((r, i) => (
                         <div key={i} style={{ marginTop: info || i > 0 ? 6 : 0 }}>
-                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#FFD400" }}>Extra ride{r.mins ? ` — ${r.mins}m` : ""}</div>
-                          {r.feeling && <div style={{ fontSize: 11.5, color: "#B9BDB8", lineHeight: 1.4 }}>{r.feeling}</div>}
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#FFD400" }}>Extra ride{r.mins ? ` — ${r.mins}m` : ""}</div>
+                          {r.feeling && <div style={{ fontSize: 13, color: "#B9BDB8", lineHeight: 1.4 }}>{r.feeling}</div>}
                         </div>
                       ))}
                     </div>
@@ -953,20 +1144,20 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                 </div>
               );
             })}
-            <div style={{ width: 34, textAlign: "center", fontSize: 11.5, fontWeight: 600, color: rowMins > 0 ? "#1B8A82" : "#3a3d3a" }}>
+            <div style={{ width: 34, textAlign: "center", fontSize: 13, fontWeight: 600, color: rowMins > 0 ? "#1B8A82" : "#3a3d3a" }}>
               {rowMins > 0 ? `${rowMins}m` : "–"}
             </div>
           </div>
         );
       })}
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11.5, color: "#B9BDB8", marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, color: "#B9BDB8", marginTop: 8 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#1B8A82", display: "inline-block" }} /> Done</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", border: "1px solid #868A85", display: "inline-block" }} /> Skipped</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#E8792B", display: "inline-block" }} /> Upcoming</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FFD400", display: "inline-block" }} /> Extra ride</span>
       </div>
-      <p style={{ fontSize: 11.5, color: "#868A85", margin: "8px 0 0" }}>Tap or hover a session dot for a quick preview.</p>
+      <p style={{ fontSize: 13, color: "#868A85", margin: "8px 0 0" }}>Tap or hover a session dot for a quick preview.</p>
     </div>
   );
 }
@@ -1029,9 +1220,29 @@ export default function SofaToSingletrack() {
   const [adHocDate, setAdHocDate] = useState("");
   const [adHocMins, setAdHocMins] = useState("30");
   const [adHocFeeling, setAdHocFeeling] = useState("About right");
+  const [races, setRaces] = useState(FALLBACK_RACES); // the live calendar once fetched, else the fallback
+  const [funPrice, setFunPrice] = useState(null); // { early, onTheDay } for the Fun category, from the website
+  const [account, setAccount] = useState(null); // null until we know; { signedIn, name } from the website
+  const [syncReady, setSyncReady] = useState(false); // has this device been reconciled with the account's saved progress
+  const [textSize, setTextSize] = useState(() => {
+    try {
+      const own = localStorage.getItem(TEXT_SIZE_KEY);
+      if (own && TEXT_SCALES[own]) return own;
+    } catch (e) { /* storage unavailable */ }
+    const site = readDisplayPrefs().text;
+    return TEXT_SCALES[site] ? site : "standard";
+  });
+  const [signInCardHidden, setSignInCardHidden] = useState(() => {
+    try { return localStorage.getItem("sofaToSingletrack:hideSignInCard") === "1"; } catch (e) { return false; }
+  });
+  const reduceMotion = typeof window !== "undefined" && (readDisplayPrefs().motion === "reduce" || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches));
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const nameRef = useRef(null);
+  // When the rider last actually changed something (not merely opened the app). Used to decide which copy is newer when a
+  // device and the account both have progress, so simply opening the app on a second phone never overwrites the first.
+  const modifiedAtRef = useRef(0);
+  const firstSaveRef = useRef(true);
   const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 
   useEffect(() => {
@@ -1056,75 +1267,155 @@ export default function SofaToSingletrack() {
     setDeferredPrompt(null);
   };
 
+  // Puts a saved snapshot (from this device or from the account) into the app.
+  const applySaved = (saved) => {
+    modifiedAtRef.current = saved.savedAt || 0;
+    if (saved.profile) setProfile(saved.profile);
+    if (saved.weeks && saved.weeks.length) {
+      // Rebuild from the canonical PHASES content rather than trusting the
+      // persisted snapshot verbatim — this keeps the rider's exact programme
+      // length and day assignments (fixed at signup) but always picks up
+      // any session-copy/effort/video updates shipped since they started,
+      // instead of freezing them on whatever content existed at signup time.
+      const chosenDays = (saved.profile && saved.profile.chosenDays) || saved.weeks[0].sessions.map((s) => s.day);
+      setWeeks(buildProgramme(saved.weeks.length, chosenDays));
+    } else if (saved.weeks) {
+      setWeeks(saved.weeks);
+    }
+    if (saved.sessionLog) setSessionLog(saved.sessionLog);
+    if (saved.badges) setBadges(saved.badges);
+    if (Array.isArray(saved.adHocLog)) setAdHocLog(saved.adHocLog);
+    if (typeof saved.notifAsked === "boolean") setNotifAsked(saved.notifAsked);
+    if (typeof saved.notifEnabled === "boolean") setNotifEnabled(saved.notifEnabled);
+    if (saved.reminderTime) setReminderTime(saved.reminderTime);
+    if (typeof saved.lastFeeling !== "undefined") setLastFeeling(saved.lastFeeling);
+    if (saved.programStart) setProgramStart(new Date(saved.programStart));
+    if (saved.sessionDurations) setSessionDurations(saved.sessionDurations);
+    if (saved.activeTimer) setActiveTimer(saved.activeTimer);
+    if (typeof saved.adjustmentMins === "number") setAdjustmentMins(saved.adjustmentMins);
+    if (saved.stage && saved.stage !== "checkin") setStage(saved.stage);
+    if (typeof saved.lastActivityAt === "number") setLastActivityAt(saved.lastActivityAt);
+
+    // One-time "the bike misses you" nudge — never repeats once shown, so
+    // it doesn't turn into a nag. Fires the first time someone reopens the
+    // app 14+ days after their last logged ride (or since starting, if
+    // they never got one logged at all).
+    const alreadyShown = !!saved.comebackNudgeShown;
+    const baseline = saved.lastActivityAt || (saved.programStart ? new Date(saved.programStart).getTime() : null);
+    if (!alreadyShown && baseline && saved.stage === "dashboard" && Date.now() - baseline >= 14 * 24 * 60 * 60 * 1000) {
+      setShowComebackNudge(true);
+    }
+    setComebackNudgeShown(alreadyShown || (!!baseline && saved.stage === "dashboard" && Date.now() - baseline >= 14 * 24 * 60 * 60 * 1000));
+
+    // One-time "fancy a race?" nudge — fires once someone is 2+ weeks into
+    // their programme, then never again regardless of how long they stick around.
+    const raceAlreadyShown = !!saved.raceOfferShown;
+    const startMs = saved.programStart ? new Date(saved.programStart).getTime() : null;
+    const raceEligible = !!startMs && saved.stage === "dashboard" && Date.now() - startMs >= 14 * 24 * 60 * 60 * 1000;
+    if (!raceAlreadyShown && raceEligible) setShowRaceOffer(true);
+    setRaceOfferShown(raceAlreadyShown || raceEligible);
+  };
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved.profile) setProfile(saved.profile);
-        if (saved.weeks && saved.weeks.length) {
-          // Rebuild from the canonical PHASES content rather than trusting the
-          // persisted snapshot verbatim — this keeps the rider's exact programme
-          // length and day assignments (fixed at signup) but always picks up
-          // any session-copy/effort/video updates shipped since they started,
-          // instead of freezing them on whatever content existed at signup time.
-          const chosenDays = (saved.profile && saved.profile.chosenDays) || saved.weeks[0].sessions.map((s) => s.day);
-          setWeeks(buildProgramme(saved.weeks.length, chosenDays));
-        } else if (saved.weeks) {
-          setWeeks(saved.weeks);
-        }
-        if (saved.sessionLog) setSessionLog(saved.sessionLog);
-        if (saved.badges) setBadges(saved.badges);
-        if (Array.isArray(saved.adHocLog)) setAdHocLog(saved.adHocLog);
-        if (typeof saved.notifAsked === "boolean") setNotifAsked(saved.notifAsked);
-        if (typeof saved.notifEnabled === "boolean") setNotifEnabled(saved.notifEnabled);
-        if (saved.reminderTime) setReminderTime(saved.reminderTime);
-        if (typeof saved.lastFeeling !== "undefined") setLastFeeling(saved.lastFeeling);
-        if (saved.programStart) setProgramStart(new Date(saved.programStart));
-        if (saved.sessionDurations) setSessionDurations(saved.sessionDurations);
-        if (saved.activeTimer) setActiveTimer(saved.activeTimer);
-        if (typeof saved.adjustmentMins === "number") setAdjustmentMins(saved.adjustmentMins);
-        if (saved.stage && saved.stage !== "checkin") setStage(saved.stage);
-        if (typeof saved.lastActivityAt === "number") setLastActivityAt(saved.lastActivityAt);
-
-        // One-time "the bike misses you" nudge — never repeats once shown, so
-        // it doesn't turn into a nag. Fires the first time someone reopens the
-        // app 14+ days after their last logged ride (or since starting, if
-        // they never got one logged at all).
-        const alreadyShown = !!saved.comebackNudgeShown;
-        const baseline = saved.lastActivityAt || (saved.programStart ? new Date(saved.programStart).getTime() : null);
-        if (!alreadyShown && baseline && saved.stage === "dashboard" && Date.now() - baseline >= 14 * 24 * 60 * 60 * 1000) {
-          setShowComebackNudge(true);
-        }
-        setComebackNudgeShown(alreadyShown || (!!baseline && saved.stage === "dashboard" && Date.now() - baseline >= 14 * 24 * 60 * 60 * 1000));
-
-        // One-time "fancy a race?" nudge — fires once someone is 2+ weeks into
-        // their programme, then never again regardless of how long they stick around.
-        const raceAlreadyShown = !!saved.raceOfferShown;
-        const startMs = saved.programStart ? new Date(saved.programStart).getTime() : null;
-        const raceEligible = !!startMs && saved.stage === "dashboard" && Date.now() - startMs >= 14 * 24 * 60 * 60 * 1000;
-        if (!raceAlreadyShown && raceEligible) setShowRaceOffer(true);
-        setRaceOfferShown(raceAlreadyShown || raceEligible);
-      }
+      if (raw) applySaved(JSON.parse(raw));
     } catch (e) {
       // no saved progress yet, or storage unavailable
     }
     setLoaded(true);
   }, []);
 
+  const buildPayload = () => ({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), savedAt: modifiedAtRef.current, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown });
+
   useEffect(() => {
     if (!loaded) return;
+    if (firstSaveRef.current) firstSaveRef.current = false;
+    else modifiedAtRef.current = Date.now();
     try {
-      const payload = JSON.stringify({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown });
-      localStorage.setItem(STORAGE_KEY, payload);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPayload()));
     } catch (e) {
       // storage unavailable (private browsing, quota) — progress just won't persist
     }
   }, [loaded, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
 
+  // The live race calendar from the website (falls back to the built-in list if it can't be reached).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/rounds")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled || !json) return;
+        const live = racesFromApi(json);
+        if (live) setRaces(live);
+        if (json.funPrice && typeof json.funPrice.early === "number") setFunPrice(json.funPrice);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // One sign-in with the main website: is this visitor signed in to their MTB east account?
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/programme/me", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => { if (!cancelled) setAccount(json && json.signedIn ? { signedIn: true, name: json.name || "" } : { signedIn: false, name: "" }); })
+      .catch(() => { if (!cancelled) setAccount({ signedIn: false, name: "" }); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const pushToAccount = (payload) =>
+    fetch("/api/programme/progress", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ data: payload }) }).catch(() => {});
+
+  // On sign-in, reconcile this device with the account's saved progress: the newer of the two wins, and the older
+  // copy is kept on the device as a backup rather than thrown away.
+  useEffect(() => {
+    if (!loaded || !account || !account.signedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/programme/progress", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const { data } = await res.json();
+        const localRaw = localStorage.getItem(STORAGE_KEY);
+        const local = localRaw ? JSON.parse(localRaw) : null;
+        if (cancelled) return;
+        const decision = decideSync(local, data);
+        if (decision.action === "useAccount") {
+          if (decision.keepBackup) localStorage.setItem(STORAGE_KEY + ":backup", localRaw);
+          applySaved(data);
+          showToast("Your saved progress has been loaded");
+        } else if (decision.action === "saveToAccount") {
+          await pushToAccount(local);
+        }
+      } catch (e) {
+        // offline or not available: the app carries on with what's on the device
+      } finally {
+        if (!cancelled) setSyncReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, account]);
+
+  // While signed in, keep the account copy up to date (a couple of seconds after the last change).
+  useEffect(() => {
+    if (!loaded || !syncReady || !account || !account.signedIn) return;
+    const t = setTimeout(() => pushToAccount(buildPayload()), 2000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, syncReady, account, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
+
+  // A signed-in rider doesn't have to type their name again.
+  useEffect(() => {
+    if (account && account.signedIn && account.name && !profile.name && (stage === "welcome" || stage === "onboarding")) {
+      setProfile((p) => (p.name ? p : { ...p, name: account.name }));
+    }
+  }, [account, stage, profile.name]);
+
   useEffect(() => { if (stage === "onboarding" && nameRef.current) nameRef.current.focus(); }, [stage, step]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), toastType === "trophy" ? 4200 : 3000); return () => clearTimeout(t); }, [toast, toastType]);
-  useEffect(() => { const t = setTimeout(() => setShowSplash(false), 1600); return () => clearTimeout(t); }, []);
+  useEffect(() => { const t = setTimeout(() => setShowSplash(false), reduceMotion ? 0 : 1600); return () => clearTimeout(t); }, []);
   useEffect(() => {
     if (!activeTimer) return;
     const t = setInterval(() => setNowTick(Date.now()), 1000);
@@ -1151,7 +1442,7 @@ export default function SofaToSingletrack() {
   const currentWeekN = nextSession ? nextSession.weekN : weeks[weeks.length - 1].n;
   const programmeComplete = unlogged.length === 0;
   const programEndDate = new Date(programStart.getTime() + weeks.length * 7 * 24 * 60 * 60 * 1000);
-  const nextRelevantRace = MTB_EAST_RACES.find((r) => new Date(r.date) > programEndDate);
+  const nextRelevantRace = races.find((r) => new Date(r.date) > programEndDate && new Date(r.date) > new Date());
 
   // A week counts as "engaged" if it has at least one real (non-skip) session log,
   // or an ad-hoc ride logged during it. Streak = consecutive engaged weeks counting
@@ -1555,7 +1846,12 @@ export default function SofaToSingletrack() {
     setProfile((p) => ({ ...p, sessionsPerWeek: n, chosenDays: defaults }));
   };
 
-  const selectedRace = MTB_EAST_RACES.find((r) => r.id === profile.raceId);
+  const changeTextSize = (key) => {
+    setTextSize(key);
+    try { localStorage.setItem(TEXT_SIZE_KEY, key); } catch (e) { /* storage unavailable */ }
+  };
+
+  const selectedRace = races.find((r) => r.id === profile.raceId);
 
   const adjustTag = (feeling) => {
     if (feeling === "Tougher than expected" || feeling === "Had to stop early") return "Take it easier — adjusted after your last session";
@@ -1568,7 +1864,9 @@ export default function SofaToSingletrack() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
         .display { font-family: 'Oswald', sans-serif; letter-spacing: 0.02em; font-weight: 600; }
-        button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #E8792B; outline-offset: 2px; }
+        button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid #E8792B; outline-offset: 2px; }
+        button { min-height: 44px; }
+        input[type="checkbox"] { width: 22px !important; height: 22px !important; }
         @keyframes toastPop { 0% { transform: translateX(-50%) scale(0.85); opacity: 0; } 60% { transform: translateX(-50%) scale(1.06); opacity: 1; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
         .toast-pop { animation: toastPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
         @keyframes confettiFall { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(600deg); opacity: 0; } }
@@ -1578,17 +1876,18 @@ export default function SofaToSingletrack() {
       `}</style>
       {showSplash && <SplashScreen />}
       <TopoBackground />
-      <div style={{ position: "relative", zIndex: 1 }}>
+      <SiteNav account={account} />
+      <div style={{ position: "relative", zIndex: 1, zoom: TEXT_SCALES[textSize] || 1 }}>
         <AppHeader />
 
-        {showConfetti && <Confetti key={confettiKey} />}
+        {showConfetti && !reduceMotion && <Confetti key={confettiKey} />}
 
         {toast && (
           <div
             className={toastType === "trophy" ? "toast-pop" : undefined}
             style={{
               position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)",
-              background: toastType === "trophy" ? "#E8792B" : "#1B8A82", color: "#fff",
+              background: toastType === "trophy" ? "#AE5B20" : "#0F5F59", color: "#fff",
               padding: toastType === "trophy" ? "10px 20px" : "8px 16px", borderRadius: 20,
               fontSize: toastType === "trophy" ? 14 : 13, fontWeight: 700, zIndex: 10,
               boxShadow: "0 4px 16px rgba(0,0,0,0.5)", maxWidth: "88vw", textAlign: "center",
@@ -1600,30 +1899,31 @@ export default function SofaToSingletrack() {
 
       {stage === "welcome" && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px 40px" }}>
-          <div className="display" style={{ fontSize: 12, color: "#1B8A82", marginBottom: 8 }}>AN MTB EAST PROGRAMME</div>
+          <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 8 }}>AN MTB EAST PROGRAMME</div>
           <h1 className="display" style={{ fontSize: 40, lineHeight: 1.05, margin: "0 0 16px", color: "#E8792B" }}>SOFA TO<br />SINGLETRACK</h1>
           <p style={{ fontSize: 16, lineHeight: 1.5, color: "#F4F3EF", marginBottom: 10 }}>
             A simple plan to get you riding regularly — 2 or 3 sessions a week, on days that work for you, time-based
             so you don't need a fancy bike computer. Racing is entirely optional, and never the point.
           </p>
-          <p style={{ fontSize: 13, lineHeight: 1.5, color: "#B9BDB8", marginBottom: 28 }}>
+          <p style={{ fontSize: 15, lineHeight: 1.5, color: "#B9BDB8", marginBottom: 28 }}>
             Built by MTB East, for off-road riding specifically — not a general cycling app. Real local trails, a real local club.
           </p>
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 28, border: "1px solid #2b2b2b" }}>
             <ContourProgress weeks={buildProgramme(8, ["Tue", "Thu", "Sat"])} currentWeek={1} />
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#B9BDB8", marginTop: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: "#B9BDB8", marginTop: 4 }}>
               <span>Week 1</span><span>Riding regularly</span>
             </div>
           </div>
+          <GpNote />
+          <TextSizeControl value={textSize} onChange={changeTextSize} />
           <button onClick={() => setStage("onboarding")} style={navBtn}>Start your programme</button>
           <InstallPrompt deferredPrompt={deferredPrompt} onInstall={handleInstallClick} isIOS={isIOS} isStandalone={isStandalone} />
-          <p style={{ fontSize: 13, color: "#868A85", lineHeight: 1.5, marginTop: 18 }}>
+          <p style={{ fontSize: 15, color: "#868A85", lineHeight: 1.5, marginTop: 18 }}>
             Training and fuelling notes are general guidance from a fixed content library, not personalised medical, dietetic or coaching advice.
-            Mountain biking carries a risk of injury — ride within your ability, and speak to a GP before starting if you have any health concerns.
-            Always wear a helmet when riding outside.
-            No data about you is recorded or held by MTB East CIC — everything you enter is stored only on this device.
+            Mountain biking carries a risk of injury, so ride within your ability.
+            Everything you enter is stored on this device. If you sign in with your MTB east account, your progress is also saved to your account so it follows you between devices; only you can see it.
           </p>
-          <a href="games/index.html" style={{ display: "block", textAlign: "center", fontFamily: "Oswald, sans-serif", fontSize: 13, letterSpacing: "0.04em", color: "#1B8A82", textDecoration: "none", marginBottom: 18 }}>
+          <a href="games/index.html" style={{ display: "block", textAlign: "center", fontFamily: "Oswald, sans-serif", fontSize: 15, letterSpacing: "0.04em", color: "#1B8A82", textDecoration: "none", marginBottom: 18 }}>
             Got younger riders at home? Try our free games →
           </a>
           <FAQSection />
@@ -1632,7 +1932,7 @@ export default function SofaToSingletrack() {
 
       {stage === "onboarding" && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px" }}>
-          <div className="display" style={{ fontSize: 12, color: "#1B8A82", marginBottom: 20 }}>GET STARTED</div>
+          <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 20 }}>GET STARTED</div>
 
           {step === 0 && (
             <div>
@@ -1655,7 +1955,7 @@ export default function SofaToSingletrack() {
           {step === 2 && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>How many days a week can you ride?</label>
-              <p style={{ fontSize: 12.5, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either works — pick whatever actually fits your week.</p>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either works — pick whatever actually fits your week.</p>
               <button onClick={() => { setSessionsPerWeek(3); setStep(3); }} style={{ ...choiceBtn, borderColor: profile.sessionsPerWeek === 3 ? "#E8792B" : "#2b2b2b" }}>3 days a week (recommended)</button>
               <button onClick={() => { setSessionsPerWeek(2); setStep(3); }} style={{ ...choiceBtn, borderColor: profile.sessionsPerWeek === 2 ? "#E8792B" : "#2b2b2b" }}>2 days a week — e.g. weekends only</button>
               <button onClick={() => setStep(1)} style={backBtn}>Back</button>
@@ -1665,14 +1965,14 @@ export default function SofaToSingletrack() {
           {step === 3 && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Which {profile.sessionsPerWeek} days work best?</label>
-              <p style={{ fontSize: 12.5, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Pick exactly {profile.sessionsPerWeek} — tap to select or deselect.</p>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Pick exactly {profile.sessionsPerWeek} — tap to select or deselect.</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
                 {WEEKDAYS.map((day) => {
                   const selected = profile.chosenDays.includes(day);
                   const disabled = !selected && profile.chosenDays.length >= profile.sessionsPerWeek;
                   return (
                     <button key={day} onClick={() => toggleDay(day)} disabled={disabled}
-                      style={{ padding: "10px 16px", borderRadius: 8, border: "1.5px solid " + (selected ? "#E8792B" : "#2b2b2b"), background: selected ? "#E8792B" : "#161616", color: selected ? "#fff" : disabled ? "#5c5f5c" : "#F4F3EF", fontSize: 14, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>
+                      style={{ padding: "10px 16px", borderRadius: 8, border: "1.5px solid " + (selected ? "#AE5B20" : "#2b2b2b"), background: selected ? "#AE5B20" : "#161616", color: selected ? "#fff" : disabled ? "#5c5f5c" : "#F4F3EF", fontSize: 16, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>
                       {day}
                     </button>
                   );
@@ -1686,7 +1986,7 @@ export default function SofaToSingletrack() {
           {step === 4 && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>How do you want to plan it?</label>
-              <p style={{ fontSize: 12.5, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either way, the goal is the same — riding regularly. Racing is just an optional bonus if you fancy it.</p>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either way, the goal is the same — riding regularly. Racing is just an optional bonus if you fancy it.</p>
               <button onClick={() => setStep(5)} style={{ ...choiceBtn, borderColor: profile.planType === "race" ? "#E8792B" : "#2b2b2b" }}>I'd like the option of a race at the end</button>
               <button onClick={() => setStep(6)} style={{ ...choiceBtn, borderColor: profile.planType === "months" ? "#E8792B" : "#2b2b2b" }}>No pressure — just build a riding habit</button>
               <button onClick={() => setStep(3)} style={backBtn}>Back</button>
@@ -1696,11 +1996,11 @@ export default function SofaToSingletrack() {
           {step === 5 && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Choose your target round</label>
-              <p style={{ fontSize: 12.5, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Example fixtures — swap in the real season calendar.</p>
-              {MTB_EAST_RACES.map((race) => (
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>The 2027 League calendar. Pick the round you'd like to aim for. Racing is entirely optional.</p>
+              {races.map((race) => (
                 <button key={race.id} onClick={() => chooseRace(race)} style={{ ...choiceBtn, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span><strong>{race.name}</strong> — {race.venue}</span>
-                  <span style={{ color: "#B9BDB8", fontSize: 13 }}>{new Date(race.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                  <span style={{ color: "#B9BDB8", fontSize: 15 }}>{new Date(race.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
                 </button>
               ))}
               <button onClick={() => setStep(4)} style={backBtn}>Back</button>
@@ -1720,37 +2020,31 @@ export default function SofaToSingletrack() {
           {step === 7 && (
             <div>
               <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Your programme</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Your programme</div>
                 <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>
                   {weeks.length} weeks, {profile.sessionsPerWeek} sessions a week ({profile.chosenDays.join("/")}){profile.planType === "race" && selectedRace ? <> — with the option to race at <strong>{selectedRace.name}</strong>, {selectedRace.venue}</> : <> — no race pressure, just building the habit</>}.
                 </p>
-                <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "#B9BDB8", lineHeight: 1.5 }}>
+                <p style={{ margin: "10px 0 0", fontSize: 14, color: "#B9BDB8", lineHeight: 1.5 }}>
                   Every session works just as well outdoors on the trail or indoors on a turbo trainer / gym bike — same time, same effort, whichever suits you that day.
                 </p>
               </div>
 
               <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 14, border: "1px solid #2b2b2b" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Before your first ride</div>
-                <div style={{ display: "flex", gap: 12, alignItems: "center", background: "#0d0d0d", borderRadius: 8, padding: "12px 14px", marginBottom: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#1B8A82", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <div style={{ width: 0, height: 0, borderTop: "6px solid transparent", borderBottom: "6px solid transparent", borderLeft: "10px solid #fff", marginLeft: 3 }} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>Quick bike safety check (2 min)</div>
-                    <div style={{ fontSize: 12.5, color: "#B9BDB8" }}>Brakes, tyres, quick releases — before you head out</div>
-                  </div>
-                </div>
-                <button onClick={() => setBikeCheckDone(true)} style={{ width: "100%", padding: "10px 0", background: bikeCheckDone ? "#1B8A82" : "#0d0d0d", color: bikeCheckDone ? "#fff" : "#F4F3EF", border: "1px solid " + (bikeCheckDone ? "#1B8A82" : "#2b2b2b"), borderRadius: 8, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
-                  {bikeCheckDone ? "✓ Bike check watched" : "I've watched it"}
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Before your first ride</div>
+                <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5, color: "#B9BDB8" }}>A two-minute check of brakes, tyres and quick releases before you head out. Tap each one to see what to look for.</p>
+                <BikeSetupCheck bordered={false} />
+                <button onClick={() => setBikeCheckDone(true)} style={{ width: "100%", padding: "10px 0", background: bikeCheckDone ? "#0F5F59" : "#0d0d0d", color: bikeCheckDone ? "#fff" : "#F4F3EF", border: "1px solid " + (bikeCheckDone ? "#0F5F59" : "#2b2b2b"), borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
+                  {bikeCheckDone ? "✓ Bike checked" : "I've checked my bike"}
                 </button>
               </div>
 
               <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Before you start</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Before you start</div>
+                <GpNote />
                 <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
                   <input type="checkbox" checked={fitnessConfirmed} onChange={(e) => setFitnessConfirmed(e.target.checked)} style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, lineHeight: 1.5, color: "#F4F3EF" }}>
-                    I confirm I'm reasonably fit and well enough to take part in this kind of physical activity. If I'm unsure, I'll check with a doctor before starting.
+                  <span style={{ fontSize: 15, lineHeight: 1.5, color: "#F4F3EF" }}>
+                    I've read the health note. I'm well enough to take part in this kind of activity, and if I'm unsure I'll check with my GP before starting.
                   </span>
                 </label>
               </div>
@@ -1769,25 +2063,16 @@ export default function SofaToSingletrack() {
             <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "1px solid #E8792B", display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">🚲</span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Your bike misses you</div>
-                <div style={{ fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>It's been a couple of weeks — no pressure, jump back in whenever you're ready.</div>
+                <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 2 }}>Your bike misses you</div>
+                <div style={{ fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>It's been a couple of weeks — no pressure, jump back in whenever you're ready.</div>
               </div>
               <button onClick={() => setShowComebackNudge(false)} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#868A85", fontSize: 20, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0 }}>×</button>
             </div>
           )}
 
+          {!(account && !account.signedIn && signInCardHidden) && <AccountCard account={account} onHide={() => { setSignInCardHidden(true); try { localStorage.setItem("sofaToSingletrack:hideSignInCard", "1"); } catch (e) { /* storage unavailable */ } }} />}
           {showRaceOffer && nextRelevantRace && (
-            <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "1px solid #E8792B", display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">🏁</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Fancy trying a race?</div>
-                <div style={{ fontSize: 12, color: "#B9BDB8", lineHeight: 1.4 }}>
-                  You've got the base fitness now. Enter the <strong>Fun category</strong> at <strong>{nextRelevantRace.name}</strong>, {nextRelevantRace.venue} ({new Date(nextRelevantRace.date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}) — use code <strong>FUNRIDE10</strong> for a discount.
-                </div>
-                <a href="https://www.mtbeast.co.uk" target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 6, fontSize: 12.5, fontWeight: 600, color: "#E8792B", textDecoration: "none" }}>See the race calendar →</a>
-              </div>
-              <button onClick={() => setShowRaceOffer(false)} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#868A85", fontSize: 20, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0 }}>×</button>
-            </div>
+            <RaceAdvert race={nextRelevantRace} funPrice={funPrice} onDismiss={() => setShowRaceOffer(false)} />
           )}
 
           {!programmeComplete && nextSession && (
@@ -1796,16 +2081,16 @@ export default function SofaToSingletrack() {
               <div style={{ position: "relative" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
                 <div style={{ background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 10, padding: "5px 10px", textAlign: "center", minWidth: 44, flexShrink: 0 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.04em" }}>{nextSession.session.day}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.04em" }}>{nextSession.session.day}</div>
                   <div className="display" style={{ fontSize: 20, color: "#F4F3EF", lineHeight: 1.1 }}>{sessionDate(programStart, nextSession.weekN, nextSession.session.day).getDate()}</div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Next up</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Next up</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">{SESSION_ICONS[nextSession.session.name] || "🚵"}</span>
                     <div style={{ fontSize: 20, fontWeight: 700 }}>{nextSession.session.name}</div>
                     {MICRO_EXPLAINERS[nextSession.session.name] && (
-                      <button onClick={() => setExplainerOpen((v) => !v)} aria-label="Why this session?" style={{ width: 20, height: 20, borderRadius: "50%", background: "none", border: "1px solid #B9BDB8", color: "#B9BDB8", fontSize: 12, fontWeight: 700, cursor: "pointer", lineHeight: "18px", padding: 0, flexShrink: 0 }}>?</button>
+                      <button onClick={() => setExplainerOpen((v) => !v)} aria-label="Why this session?" style={{ width: 20, height: 20, borderRadius: "50%", background: "none", border: "1px solid #B9BDB8", color: "#B9BDB8", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: "18px", padding: 0, flexShrink: 0 }}>?</button>
                     )}
                   </div>
                 </div>
@@ -1814,12 +2099,12 @@ export default function SofaToSingletrack() {
                 <EffortDots effort={nextSession.session.effort} />
               </div>
               {explainerOpen && MICRO_EXPLAINERS[nextSession.session.name] && (
-                <p style={{ fontSize: 12.5, color: "#B9BDB8", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "0 0 10px", lineHeight: 1.4 }}>
+                <p style={{ fontSize: 14, color: "#B9BDB8", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "0 0 10px", lineHeight: 1.4 }}>
                   {MICRO_EXPLAINERS[nextSession.session.name]}
                 </p>
               )}
               {adjustTag(lastFeeling) && (
-                <div style={{ display: "inline-block", background: "#0d0d0d", color: "#1B8A82", fontSize: 11, fontWeight: 600, borderRadius: 6, padding: "3px 8px", marginBottom: 8 }}>
+                <div style={{ display: "inline-block", background: "#0d0d0d", color: "#1B8A82", fontSize: 13, fontWeight: 600, borderRadius: 6, padding: "3px 8px", marginBottom: 8 }}>
                   {adjustTag(lastFeeling)}
                 </div>
               )}
@@ -1829,19 +2114,11 @@ export default function SofaToSingletrack() {
                   style={{ display: "flex", alignItems: "center", gap: 10, background: "#0d0d0d", borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: "1px solid #2b2b2b", textDecoration: "none" }}>
                   <img src={`https://img.youtube.com/vi/${nextSessionEffective.video}/hqdefault.jpg`} alt="" width={64} height={36} style={{ borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
                   <div>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>▶ Watch the demo</div>
-                    <div style={{ fontSize: 11.5, color: "#868A85" }}>Opens on YouTube</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#F4F3EF" }}>▶ Watch the demo</div>
+                    <div style={{ fontSize: 13, color: "#868A85" }}>Opens on YouTube</div>
                   </div>
                 </a>
-              ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#0d0d0d", borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: "1px dashed #2b2b2b" }}>
-                  <span style={{ fontSize: 18 }}>🎥</span>
-                  <div>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Video demo — coming soon</div>
-                    <div style={{ fontSize: 11.5, color: "#868A85" }}>Real footage from your coach will go here</div>
-                  </div>
-                </div>
-              )}
+              ) : null}
               {(() => {
                 const running = activeTimer && activeTimer.key === nextSession.key;
                 const isDown = running ? activeTimer.mode === "down" : timerMode === "down";
@@ -1856,7 +2133,7 @@ export default function SofaToSingletrack() {
                           const active = timerMode === m;
                           return (
                             <button key={m} onClick={() => setTimerMode(m)}
-                              style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 10px", borderRadius: 5, border: "1px solid " + (active ? "rgb(102,255,0)" : "#2b2b2b"), background: active ? "rgba(102,255,0,0.12)" : "#0d0d0d", color: active ? "rgb(102,255,0)" : "#B9BDB8", cursor: "pointer" }}>
+                              style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 10px", borderRadius: 5, border: "1px solid " + (active ? "rgb(102,255,0)" : "#2b2b2b"), background: active ? "rgba(102,255,0,0.12)" : "#0d0d0d", color: active ? "rgb(102,255,0)" : "#B9BDB8", cursor: "pointer" }}>
                               {m === "up" ? "⏱ Count up" : "⏳ Count down"}
                             </button>
                           );
@@ -1867,7 +2144,7 @@ export default function SofaToSingletrack() {
                       className={overtime ? "timer-alert" : undefined}
                       style={{ background: "#0d0d0d", borderRadius: 10, padding: "14px", marginBottom: 12, textAlign: "center", border: "1px solid " + (overtime ? "#E24B4A" : "rgb(102, 255, 0)") }}
                     >
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: overtime ? "#E24B4A" : "#868A85", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: overtime ? "#E24B4A" : "#868A85", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
                         {overtime ? "Time's up!" : isDown ? "Time left" : "Elapsed"}
                       </div>
                       <div className="display" style={{ fontSize: 32, color: overtime ? "#E24B4A" : "#F4F3EF" }}>
@@ -1879,7 +2156,7 @@ export default function SofaToSingletrack() {
                     {running ? (
                       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                         <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
-                        <button onClick={cancelRideTimer} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                        <button onClick={cancelRideTimer} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>Cancel</button>
                       </div>
                     ) : (
                       <button onClick={() => startRideTimer(nextSession, nextSessionEffective.mins)} style={{ ...navBtn, background: "rgb(102, 255, 0)", color: "#14171A" }}>▶ Start ride timer</button>
@@ -1889,8 +2166,8 @@ export default function SofaToSingletrack() {
               })()}
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => openCheckin(nextSession)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Log this session</button>
-                <button onClick={() => downloadSessionICS(nextSessionEffective, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>+ Cal</button>
-                <button onClick={() => quickSkip(nextSession)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 13, cursor: "pointer" }}>Skip</button>
+                <button onClick={() => downloadSessionICS(nextSessionEffective, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>+ Cal</button>
+                <button onClick={() => quickSkip(nextSession)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>Skip</button>
               </div>
               </div>
             </div>
@@ -1899,46 +2176,46 @@ export default function SofaToSingletrack() {
           <PreRideChecklist />
 
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#1B8A82", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1B8A82", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
               Week {currentWeekN} of {weeks.length}
             </div>
-            <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.5, color: "#F4F3EF" }}>
+            <p style={{ margin: 0, fontSize: 16, lineHeight: 1.5, color: "#F4F3EF" }}>
               {welcomeNote || `Nice and steady, ${profile.name || "rider"} — every session counts.`}
             </p>
             {lastWeekRideCount > 0 && (
-              <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "#1B8A82", fontWeight: 600 }}>
+              <p style={{ margin: "8px 0 0", fontSize: 14, color: "#1B8A82", fontWeight: 600 }}>
                 Last week: {lastWeekRideCount} ride{lastWeekRideCount === 1 ? "" : "s"} · {formatMinutes(lastWeekMinutes)} ridden
               </p>
             )}
 
             <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0" }} />
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Your progress</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Your progress</div>
             <div style={{ maxWidth: 260, margin: "0 auto" }}>
               <SpeedoGauge pct={completionPct} />
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
               <div style={{ flex: 1, background: "#0d0d0d", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
                 <div className="display" style={{ fontSize: 20, color: "#E8792B" }}>{formatMinutes(totalMinutesRidden)}</div>
-                <div style={{ fontSize: 11.5, color: "#B9BDB8", marginTop: 2 }}>Time ridden</div>
+                <div style={{ fontSize: 13, color: "#B9BDB8", marginTop: 2 }}>Time ridden</div>
               </div>
               <div style={{ flex: 1, background: "#0d0d0d", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
                 <div className="display" style={{ fontSize: 20, color: "#E8792B" }}>{longestStreakWeeks}</div>
-                <div style={{ fontSize: 11.5, color: "#B9BDB8", marginTop: 2 }}>Best streak (weeks)</div>
+                <div style={{ fontSize: 13, color: "#B9BDB8", marginTop: 2 }}>Best streak (weeks)</div>
               </div>
             </div>
 
             <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Trophy case</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Trophy case</div>
             {badges.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 13, color: "#868A85", lineHeight: 1.5 }}>Keep going — your first trophy unlocks after your first week done.</p>
+              <p style={{ margin: 0, fontSize: 15, color: "#868A85", lineHeight: 1.5 }}>Keep going — your first trophy unlocks after your first week done.</p>
             ) : (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {badges.map((b) => (
                   <div key={b} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 10, padding: "8px 12px" }}>
                     <span style={{ fontSize: 16 }}>🏆</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>{b}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "#F4F3EF" }}>{b}</span>
                   </div>
                 ))}
               </div>
@@ -1947,26 +2224,26 @@ export default function SofaToSingletrack() {
 
           {programmeComplete ? (
             <div>
-              <div style={{ background: "#E8792B", borderRadius: 12, padding: "20px", textAlign: "center", color: "#fff", marginBottom: 16 }}>
+              <div style={{ background: "#AE5B20", borderRadius: 12, padding: "20px", textAlign: "center", color: "#fff", marginBottom: 16 }}>
                 <div className="display" style={{ fontSize: 18, marginBottom: 6 }}>YOU'RE A REGULAR RIDER NOW</div>
-                <p style={{ margin: 0, fontSize: 14 }}>That's the real win. Racing from here is entirely optional.</p>
-                <button onClick={handleShareFinishCard} style={{ marginTop: 14, background: "#14171A", border: "none", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>📸 Share your achievement</button>
+                <p style={{ margin: 0, fontSize: 16 }}>That's the real win. Racing from here is entirely optional.</p>
+                <button onClick={handleShareFinishCard} style={{ marginTop: 14, background: "#14171A", border: "none", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>📸 Share your achievement</button>
               </div>
               <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid #2b2b2b" }}>
-                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Fancy trying a race?</div>
-                <p style={{ fontSize: 13, color: "#B9BDB8", margin: "0 0 10px", lineHeight: 1.4 }}>
+                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Fancy trying a race?</div>
+                <p style={{ fontSize: 15, color: "#B9BDB8", margin: "0 0 10px", lineHeight: 1.4 }}>
                   {selectedRace ? <>You could line up at <strong>{selectedRace.name}</strong>, {selectedRace.venue}.</> : "There's a full MTB East fixture list you could dip into whenever you're ready."}
                   {" "}You don't need to compete to come along — plenty of riders spectate at a race first.
                 </p>
-                <a href="https://www.mtbeast.co.uk" target="_blank" rel="noopener noreferrer" style={{ ...navBtn, marginBottom: 8, display: "block", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>See the race calendar</a>
-                <button onClick={() => setStage("coachQA")} style={{ background: "none", border: "1px solid #E8792B", color: "#E8792B", borderRadius: 10, width: "100%", padding: "12px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Talk to a coach about racing</button>
+                <a href="/league" style={{ ...navBtn, marginBottom: 8, display: "block", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>See the race calendar</a>
+                <button onClick={() => setStage("coachQA")} style={{ background: "none", border: "1px solid #E8792B", color: "#E8792B", borderRadius: 10, width: "100%", padding: "12px 0", fontSize: 16, fontWeight: 600, cursor: "pointer" }}>Talk to a coach about racing</button>
               </div>
               <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", border: "1px solid #2b2b2b" }}>
-                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Just want to keep riding?</div>
-                <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13, color: "#F4F3EF", lineHeight: 1.7 }}>
+                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Just want to keep riding?</div>
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 15, color: "#F4F3EF", lineHeight: 1.7 }}>
                   <li>Keep logging rides whenever you get out — no plan required</li>
-                  <li>Find local routes and clubs via British Cycling</li>
-                  <li>Come watch an MTB East race — no entry needed, just turn up</li>
+                  <li>Ask at your local bike shop or trail centre about routes and rides near you</li>
+                  <li>Come and watch an MTB East race: spectators are welcome, and dogs on a lead too</li>
                 </ul>
               </div>
             </div>
@@ -1974,17 +2251,17 @@ export default function SofaToSingletrack() {
             <div>
               {upcoming.length > 0 && (
                 <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Coming up</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Coming up</div>
                   {upcoming.map((s, i) => {
                     const eff = effectiveSession(s.session, adjustmentMins);
                     return (
                       <div key={s.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: i < upcoming.length - 1 ? 10 : 0 }}>
-                        <div className="display" style={{ fontSize: 12, color: "#E8792B", minWidth: 30 }}>{s.session.day}</div>
+                        <div className="display" style={{ fontSize: 14, color: "#E8792B", minWidth: 30 }}>{s.session.day}</div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13 }}>{s.session.name}</div>
-                          <div style={{ fontSize: 12.5, color: "#B9BDB8" }}>{eff.detail}</div>
+                          <div style={{ fontWeight: 600, fontSize: 15 }}>{s.session.name}</div>
+                          <div style={{ fontSize: 14, color: "#B9BDB8" }}>{eff.detail}</div>
                         </div>
-                        <button onClick={() => quickSkip(s)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#868A85", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", height: "fit-content" }}>Skip</button>
+                        <button onClick={() => quickSkip(s)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#868A85", borderRadius: 6, padding: "3px 8px", fontSize: 13, cursor: "pointer", height: "fit-content" }}>Skip</button>
                       </div>
                     );
                   })}
@@ -2008,38 +2285,38 @@ export default function SofaToSingletrack() {
             {!adHocFormOpen ? (
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF" }}>Been out on your bike off-plan?</div>
-                  <div style={{ fontSize: 12, color: "#B9BDB8" }}>Any ride counts — not just the scheduled ones</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#F4F3EF" }}>Been out on your bike off-plan?</div>
+                  <div style={{ fontSize: 14, color: "#B9BDB8" }}>Any ride counts — not just the scheduled ones</div>
                 </div>
-                <button onClick={openAdHocForm} style={{ background: "#1B8A82", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ Log a ride</button>
+                <button onClick={openAdHocForm} style={{ background: "#0F5F59", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 14, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ Log a ride</button>
               </div>
             ) : (
               <div>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: "#F4F3EF", marginBottom: 10 }}>Log an extra ride</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#F4F3EF", marginBottom: 10 }}>Log an extra ride</div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontSize: 11.5, color: "#B9BDB8", marginBottom: 4 }}>Date</label>
+                    <label style={{ display: "block", fontSize: 13, color: "#B9BDB8", marginBottom: 4 }}>Date</label>
                     <input type="date" value={adHocDate} max={dateKey(new Date())} onChange={(e) => setAdHocDate(e.target.value)}
-                      style={{ width: "100%", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "8px", fontSize: 13, boxSizing: "border-box" }} />
+                      style={{ width: "100%", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "8px", fontSize: 15, boxSizing: "border-box" }} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontSize: 11.5, color: "#B9BDB8", marginBottom: 4 }}>Minutes</label>
+                    <label style={{ display: "block", fontSize: 13, color: "#B9BDB8", marginBottom: 4 }}>Minutes</label>
                     <input type="number" inputMode="numeric" min="1" value={adHocMins} onChange={(e) => setAdHocMins(e.target.value)} placeholder="30"
-                      style={{ width: "100%", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "8px", fontSize: 13, boxSizing: "border-box" }} />
+                      style={{ width: "100%", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "8px", fontSize: 15, boxSizing: "border-box" }} />
                   </div>
                 </div>
-                <label style={{ display: "block", fontSize: 11.5, color: "#B9BDB8", marginBottom: 6 }}>How did it feel?</label>
+                <label style={{ display: "block", fontSize: 13, color: "#B9BDB8", marginBottom: 6 }}>How did it feel?</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
                   {FEELINGS.map((f) => (
                     <button key={f} onClick={() => setAdHocFeeling(f)}
-                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid " + (adHocFeeling === f ? "#1B8A82" : "#2b2b2b"), background: adHocFeeling === f ? "#1B8A82" : "#0d0d0d", color: adHocFeeling === f ? "#fff" : "#B9BDB8", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
+                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid " + (adHocFeeling === f ? "#0F5F59" : "#2b2b2b"), background: adHocFeeling === f ? "#0F5F59" : "#0d0d0d", color: adHocFeeling === f ? "#fff" : "#B9BDB8", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                       {f}
                     </button>
                   ))}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={submitAdHocRide} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Save ride</button>
-                  <button onClick={cancelAdHocForm} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 14px", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                  <button onClick={cancelAdHocForm} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 14px", fontSize: 15, cursor: "pointer" }}>Cancel</button>
                 </div>
               </div>
             )}
@@ -2047,26 +2324,26 @@ export default function SofaToSingletrack() {
 
           {streakWeeks > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#E8792B", borderRadius: 20, padding: "6px 12px" }}>
-                <span style={{ fontSize: 13 }}>🔥</span>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: "#fff" }}>{streakWeeks} week streak</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#AE5B20", borderRadius: 20, padding: "6px 12px" }}>
+                <span style={{ fontSize: 15 }}>🔥</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{streakWeeks} week streak</span>
               </div>
             </div>
           )}
 
           <div style={{ background: "#161616", borderRadius: 14, padding: "20px", marginBottom: 16, border: "2px solid #E8792B" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Get in touch</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Get in touch</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <button onClick={() => setStage("coachQA")} style={actionGridBtn}>💬 Contact a coach</button>
-              <a href="https://www.mtbeast.co.uk" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>📅 Race calendar</a>
+              <a href="/league" style={actionGridBtn}>📅 Race calendar</a>
               <button onClick={handleShare} style={actionGridBtn}>📤 Share this app</button>
               <a href="mailto:info@mtbeast.co.uk?subject=Sofa%20to%20Singletrack%20feedback" style={actionGridBtn}>💡 Feedback / bug</a>
             </div>
 
             <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Support MTB East</div>
-            <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#B9BDB8", lineHeight: 1.4 }}>This app is free to use. If it's helped you, a donation helps us keep it that way.</p>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Support MTB East</div>
+            <p style={{ margin: "0 0 12px", fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>This app is free to use. If it's helped you, a donation helps us keep it that way.</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               <a href="https://buy.stripe.com/4gMbJ2cXM6jFd1c2uR43S00" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>£5</a>
               <a href="https://buy.stripe.com/bJeeVe3nc6jFbX81qN43S01" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>£10</a>
@@ -2076,13 +2353,14 @@ export default function SofaToSingletrack() {
 
           <TipsAndAdvice />
 
+          <TextSizeControl value={textSize} onChange={changeTextSize} />
           <SettingsSection profile={profile} setProfile={setProfile} weeks={weeks} setWeeks={setWeeks} showToast={showToast} />
         </div>
       )}
 
       {stage === "checkin" && checkinTarget && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px" }}>
-          <div className="display" style={{ fontSize: 12, color: "#1B8A82", marginBottom: 8 }}>HOW DID IT GO?</div>
+          <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 8 }}>HOW DID IT GO?</div>
           <h2 className="display" style={{ fontSize: 24, margin: "0 0 20px", color: "#E8792B" }}>{checkinTarget.session.name.toUpperCase()}</h2>
           {!(checkinTarget.key in sessionLog) && (
             <div>
@@ -2098,13 +2376,13 @@ export default function SofaToSingletrack() {
           {checkinTarget.key in sessionLog && (
             <div>
               <div style={{ background: "#14171A", borderRadius: 12, padding: "18px 20px", marginBottom: 20, color: "#F4F3EF" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Coach note</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Coach note</div>
                 <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, minHeight: 20 }}>{coachNote}</p>
               </div>
 
               {adjustWarning && (
                 <div style={{ background: "#161616", border: "1px solid #E8792B", borderRadius: 12, padding: "14px 16px", marginBottom: 20 }}>
-                  <p style={{ margin: 0, fontSize: 13, color: "#F4F3EF", lineHeight: 1.5 }}>
+                  <p style={{ margin: 0, fontSize: 15, color: "#F4F3EF", lineHeight: 1.5 }}>
                     ⚠️ {adjustWarning === "down"
                       ? "We've trimmed 5 minutes off your sessions from here based on how that felt."
                       : "We've added 5 minutes to your sessions from here since that felt easier than expected."}
@@ -2115,17 +2393,17 @@ export default function SofaToSingletrack() {
 
               {showNotifPrompt && (
                 <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Want a reminder for your sessions?</div>
-                  <p style={{ fontSize: 12.5, color: "#B9BDB8", margin: "0 0 12px", lineHeight: 1.4 }}>
+                  <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Want a reminder for your sessions?</div>
+                  <p style={{ fontSize: 14, color: "#B9BDB8", margin: "0 0 12px", lineHeight: 1.4 }}>
                     Totally optional — pick one time that works, and we'll nudge you on session days. You can turn this off anytime.
                   </p>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-                    <span style={{ fontSize: 13, color: "#F4F3EF" }}>Remind me at</span>
-                    <input type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} style={{ background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "6px 8px", fontSize: 13 }} />
+                    <span style={{ fontSize: 15, color: "#F4F3EF" }}>Remind me at</span>
+                    <input type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} style={{ background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "6px 8px", fontSize: 15 }} />
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => dismissNotifPrompt(true)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Yes, remind me</button>
-                    <button onClick={() => dismissNotifPrompt(false)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 14px", fontSize: 13, cursor: "pointer" }}>No thanks</button>
+                    <button onClick={() => dismissNotifPrompt(false)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 14px", fontSize: 15, cursor: "pointer" }}>No thanks</button>
                   </div>
                 </div>
               )}
@@ -2138,13 +2416,13 @@ export default function SofaToSingletrack() {
 
       {stage === "coachQA" && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px" }}>
-          <div className="display" style={{ fontSize: 12, color: "#1B8A82", marginBottom: 8 }}>CONTACT A COACH</div>
+          <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 8 }}>CONTACT A COACH</div>
           <h2 className="display" style={{ fontSize: 24, margin: "0 0 8px", color: "#E8792B" }}>WHAT WOULD HELP YOU MOST?</h2>
-          <p style={{ fontSize: 13.5, color: "#B9BDB8", lineHeight: 1.5, marginBottom: 14 }}>
+          <p style={{ fontSize: 15, color: "#B9BDB8", lineHeight: 1.5, marginBottom: 14 }}>
             This isn't live chat — it opens an email from your own address to the coaches, so they can reply directly and we can find out what riders actually want from us.
           </p>
           <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
-            <p style={{ margin: 0, fontSize: 12.5, color: "#B9BDB8", lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: 14, color: "#B9BDB8", lineHeight: 1.5 }}>
               This form is free to use. All coaching — 1-to-1 or an organised skills session — is a chargeable service. Tell us what you're after below and we'll get back to you with details.
             </p>
           </div>
@@ -2155,7 +2433,7 @@ export default function SofaToSingletrack() {
               const selected = qaTopics.includes(topic);
               return (
                 <button key={topic} onClick={() => toggleQaTopic(topic)}
-                  style={{ padding: "10px 14px", borderRadius: 8, border: "1.5px solid " + (selected ? "#E8792B" : "#2b2b2b"), background: selected ? "#E8792B" : "#161616", color: selected ? "#14171A" : "#F4F3EF", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+                  style={{ padding: "10px 14px", borderRadius: 8, border: "1.5px solid " + (selected ? "#E8792B" : "#2b2b2b"), background: selected ? "#E8792B" : "#161616", color: selected ? "#14171A" : "#F4F3EF", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
                   {topic}
                 </button>
               );
@@ -2175,8 +2453,8 @@ export default function SofaToSingletrack() {
   );
 }
 
-const navBtn = { width: "100%", padding: "14px 0", background: "#1B8A82", color: "#FFFFFF", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", marginBottom: 10 };
-const backBtn = { width: "100%", padding: "12px 0", background: "none", color: "#B9BDB8", border: "none", fontSize: 14, cursor: "pointer" };
+const navBtn = { width: "100%", padding: "14px 0", background: "#0F5F59", color: "#FFFFFF", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", marginBottom: 10 };
+const backBtn = { width: "100%", padding: "12px 0", background: "none", color: "#B9BDB8", border: "none", fontSize: 16, cursor: "pointer" };
 const choiceBtn = { display: "block", width: "100%", textAlign: "left", padding: "14px 16px", marginBottom: 10, background: "#161616", border: "1.5px solid #2b2b2b", color: "#F4F3EF", borderRadius: 10, fontSize: 15, cursor: "pointer" };
 const inputStyle = { width: "100%", padding: "12px 14px", borderRadius: 8, border: "1px solid #2b2b2b", background: "#161616", color: "#F4F3EF", fontSize: 16, marginBottom: 20, boxSizing: "border-box" };
-const actionGridBtn = { display: "block", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer", textAlign: "center", textDecoration: "none", boxSizing: "border-box" };
+const actionGridBtn = { display: "block", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "center", textDecoration: "none", boxSizing: "border-box" };

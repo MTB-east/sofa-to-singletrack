@@ -16,6 +16,17 @@ export default defineConfig(({ command }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
+        // Registered explicitly from src/main.jsx via virtual:pwa-register
+        // instead (registerSW({ immediate: true })) -- the default
+        // auto-injected script only calls navigator.serviceWorker.register
+        // with no update-handling logic, so a new deploy's service worker
+        // can finish installing in the background (skipWaiting +
+        // clientsClaim are both on) without the already-open page ever
+        // reloading to pick it up. virtual:pwa-register's registerSW
+        // reloads automatically once the new worker takes control, which
+        // is what actually fixes "still see the old version after a
+        // deploy" rather than needing a manual cache clear.
+        injectRegister: false,
         includeAssets: ["favicon.png", "brand/logo-full.png", "brand/header-mark.png", "brand/topo-bg.webp"],
         manifest: {
           name: "Sofa to Singletrack",
@@ -36,12 +47,15 @@ export default defineConfig(({ command }) => {
         },
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,webp,ico}"],
-          // /games/ is a separate static site copied into dist alongside the
+          // /games is a separate static site copied into dist alongside the
           // app (see .github/workflows/deploy-pages.yml) -- without this, the
           // PWA's SPA navigation fallback serves the app's cached index.html
-          // for any /games/* URL once someone has the app's service worker
-          // installed, instead of the actual games page.
-          navigateFallbackDenylist: [new RegExp(`^${base}games/`)],
+          // for any /games or /games/* URL once someone has the app's
+          // service worker installed, instead of the actual games page. The
+          // "(/|$)" also covers the bare "/games" URL (no trailing slash) --
+          // the new top-level "Apps" nav link uses exactly that, redirected
+          // by src/app/programme/games/page.tsx in the website repo.
+          navigateFallbackDenylist: [new RegExp(`^${base}games(/|$)`)],
         },
       }),
     ],
