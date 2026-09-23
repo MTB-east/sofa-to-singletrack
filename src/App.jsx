@@ -759,7 +759,7 @@ const SITE_NAV_LINKS = [
   { href: "/sportive", label: "Sportive" },
   { href: "/coaching", label: "Coaching" },
   { href: "/programme", label: "Sofa to Singletrack", current: true },
-  { href: "/programme/games", label: "Apps" },
+  { href: "/programme/games", label: "Games" },
   { href: "/academy", label: "Academy" },
   { href: "/results", label: "Results" },
   { href: "/news", label: "News" },
