@@ -261,6 +261,10 @@
 
   function renderGrid() {
     gridEl.innerHTML = "";
+    // 5 columns once there are more than 16 cards (hard mode's 10 pairs), so the extra row of cards eats
+    // into height rather than width -- the grid has a fixed height budget (see .grid in the stylesheet),
+    // so more rows would otherwise mean thinner cards for no reason.
+    gridEl.classList.toggle("grid-wide", deck.length > 16);
     deck.forEach((card) => {
       const el = document.createElement("div");
       el.className = "card";
