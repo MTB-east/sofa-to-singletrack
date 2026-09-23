@@ -48,22 +48,6 @@
       fact: "MTB East keeps an Owl badge ready for a future League round.",
     },
     {
-      id: "giveway",
-      type: "icon",
-      category: "know",
-      icon: "giveway",
-      label: "Give way",
-      fact: "Give way to walkers and horse riders — slow down, say a friendly hello, and pass wide where you can.",
-    },
-    {
-      id: "abc",
-      type: "icon",
-      category: "know",
-      icon: "abc",
-      label: "ABC check",
-      fact: "Before every ride, check your ABC — Air, Brakes, Chain.",
-    },
-    {
       id: "olympic",
       type: "icon",
       category: "know",
@@ -71,24 +55,125 @@
       label: "Olympic sport",
       fact: "Mountain biking became an Olympic sport at the 1996 Atlanta Games!",
     },
+    {
+      id: "gary",
+      type: "image",
+      category: "brand",
+      src: "assets/gary-medals.png",
+      label: "Gary",
+      fact: "That's Gary! Easy to spot in his jester hat, he hands out the medals at the end of every U7, U9 and U12 race.",
+    },
+    {
+      id: "adam",
+      type: "image",
+      category: "brand",
+      src: "assets/adam-march.png",
+      label: "Adam",
+      fact: "That's Adam March — part of MTB East's comms team, keeping everyone in the loop before and during race day.",
+    },
+    {
+      id: "motto",
+      type: "image",
+      category: "brand",
+      src: "assets/motto-line.png",
+      label: "Ride Develop Belong",
+      fact: "Ride, Develop, Belong — MTB East's motto, right there on the kit.",
+    },
+    {
+      id: "wordmark",
+      type: "image",
+      category: "brand",
+      src: "assets/wordmark-white.png",
+      label: "MTB East",
+      fact: "MTB East has been racing in the east since 2014.",
+    },
+    {
+      id: "since2014",
+      type: "text",
+      category: "brand",
+      big: "2014",
+      label: "Founded",
+      fact: "MTB East has been racing in the east since 2014.",
+    },
+    {
+      id: "lastrace",
+      type: "text",
+      category: "race",
+      big: "162",
+      label: "Last race",
+      fact: "162 riders took part in the final round of the 2026 season.",
+    },
+    {
+      id: "badge-league",
+      type: "image",
+      category: "brand",
+      src: "assets/badge-league.png",
+      label: "League",
+      fact: "Seven rounds a season at Potash Woods and Gallows Green — cross-country racing for every age and ability.",
+    },
+    {
+      id: "badge-festival",
+      type: "image",
+      category: "brand",
+      src: "assets/badge-festival.png",
+      label: "Festival",
+      fact: "A mini-festival at Gallows Green with camping, kids' activities, a gravel race and entertainment.",
+    },
+    {
+      id: "badge-sportive",
+      type: "image",
+      category: "brand",
+      src: "assets/badge-sportive.png",
+      label: "Sportive",
+      fact: "A planned 50–100km sportive from Gallows Green, part charity fundraiser.",
+    },
+    {
+      id: "badge-coaching",
+      type: "image",
+      category: "brand",
+      src: "assets/badge-coaching.png",
+      label: "Coaching",
+      fact: "Coaching and the Women's Rookie Race Squad, led by MTB East's own instructors.",
+    },
+    {
+      id: "badge-academy",
+      type: "image",
+      category: "brand",
+      src: "assets/badge-academy.png",
+      label: "Academy",
+      fact: "Academy is MTB East's newest division.",
+    },
+    {
+      id: "badge-volunteers",
+      type: "image",
+      category: "brand",
+      src: "assets/badge-volunteers.png",
+      label: "Volunteers",
+      fact: "Marshals, timing, sign-on and race officials — even one session at one race is a huge help.",
+    },
+    {
+      id: "badge-partners",
+      type: "image",
+      category: "brand",
+      src: "assets/badge-partners.png",
+      label: "Partners",
+      fact: "Sponsors and partners back MTB East all season long.",
+    },
   ];
 
   const CATEGORY_LABEL = { brand: "BRAND", race: "RACE", know: "KNOW-HOW" };
 
-  // Easy drops the two "spare" badges (the extra, harder-to-explain content) and keeps the core 6 facts.
-  const EASY_IDS = ["mascot", "round1", "round2", "giveway", "abc", "olympic"];
-
+  // Each play draws a different handful of pairs from the whole pool, so there is always something new to find
+  // (the pool is now bigger than any one round needs, so a random draw keeps every play fresh).
   const DIFFICULTY = {
-    easy: { pairs: () => PAIRS.filter((p) => EASY_IDS.includes(p.id)), mismatchDelay: 1000 },
-    standard: { pairs: () => PAIRS, mismatchDelay: 850 },
-    hard: { pairs: () => PAIRS, mismatchDelay: 550 },
+    easy: { pairs: () => shuffle(PAIRS).slice(0, 6), mismatchDelay: 1000 },
+    standard: { pairs: () => shuffle(PAIRS).slice(0, 8), mismatchDelay: 850 },
+    hard: { pairs: () => shuffle(PAIRS).slice(0, 10), mismatchDelay: 550 },
   };
   let difficulty = "standard";
   let activePairs = PAIRS;
 
   const ICONS = {
-    giveway: `<svg viewBox="0 0 64 64" width="60%" height="60%"><polygon points="32,10 58,54 6,54" fill="none" stroke="#E8792B" stroke-width="4.5" stroke-linejoin="round"/><polygon points="32,10 58,54 6,54" fill="#1B8A82" opacity="0.15"/></svg>`,
-    abc: `<svg viewBox="0 0 64 64" width="62%" height="62%"><circle cx="32" cy="32" r="22" fill="none" stroke="#1B8A82" stroke-width="4.5"/><circle cx="32" cy="32" r="6" fill="#E8792B"/><line x1="32" y1="10" x2="32" y2="18" stroke="#E8792B" stroke-width="4"/><line x1="32" y1="46" x2="32" y2="54" stroke="#E8792B" stroke-width="4"/><line x1="10" y1="32" x2="18" y2="32" stroke="#E8792B" stroke-width="4"/><line x1="46" y1="32" x2="54" y2="32" stroke="#E8792B" stroke-width="4"/></svg>`,
     olympic: `<svg viewBox="0 0 64 64" width="58%" height="58%"><circle cx="32" cy="24" r="13" fill="none" stroke="#E8792B" stroke-width="4"/><polygon points="32,35 40,58 24,58" fill="#1B8A82"/></svg>`,
   };
 
@@ -199,6 +284,11 @@
         img.src = card.src;
         img.alt = card.label;
         front.appendChild(img);
+      } else if (card.type === "text") {
+        const big = document.createElement("div");
+        big.className = "text-big";
+        big.textContent = card.big;
+        front.appendChild(big);
       } else {
         const iconWrap = document.createElement("div");
         iconWrap.className = "icon-wrap";
