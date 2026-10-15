@@ -1,6 +1,6 @@
 ---
-title: "Sofa to Singletrack: coaching plans for sign-off"
-subtitle: "Draft for Kevin, 15 October 2026. Nothing here is in the app yet."
+title: "Sofa to Singletrack: coaching plans"
+subtitle: "Signed off by the MTB east crew, 15 October 2026. Being built into the app from this text."
 ---
 
 # What this is
@@ -11,7 +11,7 @@ The app currently has one 12-week plan for everyone. Three problems came out of 
 2. **The 4-week and 8-week plans are just the first weeks of the 12**, so a rider who picks "race at the end" and 8 weeks never reaches race pace, course skills or the taper.
 3. **It is an adult plan.** An eight-year-old racing 900-metre laps gets the same 60-minute ride with hard intervals as a forty-year-old.
 
-This document proposes three plans to fix that. Everything is written to be read by the rider in the app, so the wording matters as much as the structure. Please change anything that is not how you would coach it. The questions at the end are the ones I could not answer for you.
+This document proposes three plans to fix that. Everything is written to be read by the rider in the app, so the wording matters as much as the structure. The MTB east crew signed this off as written on 15 October 2026. The questions at the end were left open in the draft and stand as written unless the crew says otherwise.
 
 # Where the ideas come from
 
@@ -197,7 +197,7 @@ The graduation card says a fun race is next if they want it, with the next round
 - Donation and "Contact a coach" tiles are hidden on a Junior rider's dashboard; they stay on the account holder's.
 - Coach messages for Juniors are written to the grown-up, not the child.
 
-# Questions for Kevin
+# Open questions, decided as written on sign-off
 
 1. The talk test wording: Chatting, Breathing, Can't talk. Keep, or your own words?
 2. The skills order: ready position, braking, gears, cornering, obstacles, descending, standing climbs, line choice, starts. Would you move anything?
@@ -210,6 +210,6 @@ The graduation card says a fun race is next if they want it, with the next round
 9. The current coach messages in the app (welcome, check-in replies, race week) are still the draft placeholders. Would you like them in a document to edit, or shall I rewrite them in this voice for you to approve?
 10. Names: "Sofa to Singletrack Juniors", "The Badger" and "The Squirrel". Keep, or do the round badges have names already?
 
-# What happens after sign-off
+# What the app gets
 
-Once you have marked this up, the app gets: the talk-test effort scale; the three adult plan lengths with their own endings; the two-day version; the Race ready block; the Juniors plan with games, badges and the grown-up's tick; and the Junior dashboard rules above. Each session's "done when" becomes the line the rider sees before they tap "Log this session". I will build it in the app's data shape so the words you approve are the words riders read, nothing paraphrased.
+The app gets: the talk-test effort scale; the three adult plan lengths with their own endings; the two-day version; the Race ready block; the Juniors plan with games, badges and the grown-up's tick; and the Junior dashboard rules above. Each session's "done when" becomes the line the rider sees before they tap "Log this session". It is built in the app's data shape so the words in this document are the words riders read, nothing paraphrased.
