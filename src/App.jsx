@@ -1570,7 +1570,10 @@ export default function SofaToSingletrack() {
     if (saved.sessionDurations) setSessionDurations(saved.sessionDurations);
     setActiveTimer(saved.activeTimer || null);
     if (typeof saved.adjustmentMins === "number") setAdjustmentMins(saved.adjustmentMins);
-    if (saved.stage && saved.stage !== "checkin") setStage(saved.stage);
+    // A reload mid check-in lands back on the dashboard, never on the welcome screen: before this, leaving the stage
+    // at its initial "welcome" meant the next save wrote that back, and the rider reopened the app to the intro page
+    // as if their programme had gone.
+    if (saved.stage) setStage(saved.stage === "checkin" ? "dashboard" : saved.stage);
     setLastActivityAt(typeof saved.lastActivityAt === "number" ? saved.lastActivityAt : null);
 
     // One-time "the bike misses you" nudge — never repeats once shown, so
