@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import COACH_SCENARIOS from "./data/coach-scenarios.json";
+import { WEEKDAYS, sessionDate, weekNumberForDate, programmeStartFor, trimWeekOne, decideSync } from "./lib/plan.js";
 
 /*
 DESIGN PLAN — v5
@@ -55,14 +56,7 @@ function readDisplayPrefs() {
     return { text: "standard", motion: "system" };
   }
 }
-// Decides what to do when a device and a signed-in account may both hold progress. The copy that was changed most recently
-// wins; if the account's copy wins, the device's older copy is kept as a backup. Opening the app never counts as a change.
-function decideSync(local, server) {
-  const hasLocal = !!local && ((local.stage && local.stage !== "welcome") || (local.sessionLog && Object.keys(local.sessionLog).length > 0));
-  if (server && (!hasLocal || (server.savedAt || 0) > (local.savedAt || 0))) return { action: "useAccount", keepBackup: hasLocal };
-  if (hasLocal) return { action: "saveToAccount" };
-  return { action: "nothing" };
-}
+// decideSync lives in src/lib/plan.js (tested): a copy with rides logged always beats one with none.
 // ---- Voice cues during a ride ------------------------------------------------------------------
 // Spoken by the phone's own built-in voice. Only works while the app is open and the screen is on: a web app is paused by the phone
 // when the screen locks, so nothing can be said (or beep) until it's unlocked again.
@@ -101,7 +95,6 @@ function nextCue(cues, elapsedMs, spoken) {
 }
 const TEXT_SCALES = { standard: 1, large: 1.12, larger: 1.25, largest: 1.4 };
 const TEXT_SIZE_KEY = "sofaToSingletrack:textSize";
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // One canonical 3-month (12-week) plan. Shorter programmes (1 or 2 months)
 // just use the first 4 or 8 weeks of this same plan rather than a separately
@@ -407,15 +400,7 @@ function toICSDate(date) {
   return date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 }
 
-function sessionDate(programStart, weekNum, dayLabel) {
-  // Program start is treated as the Monday of week 1 for scheduling purposes,
-  // regardless of the actual weekday someone signs up on.
-  const dayOffset = WEEKDAYS.indexOf(dayLabel);
-  const d = new Date(programStart);
-  d.setDate(d.getDate() + (weekNum - 1) * 7 + Math.max(dayOffset, 0));
-  d.setHours(17, 30, 0, 0);
-  return d;
-}
+// sessionDate lives in src/lib/plan.js (tested): week 1 is the real calendar week the programme started in.
 
 function downloadSessionICS(session, weekNum, weekTitle, programStart) {
   const start = sessionDate(programStart, weekNum, session.day);
@@ -971,7 +956,7 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
   const saveDays = () => {
     if (draftDays.length !== profile.sessionsPerWeek) return;
     setProfile({ ...profile, chosenDays: draftDays });
-    setWeeks(buildProgramme(weeks.length, draftDays));
+    setWeeks(trimWeekOne(buildProgramme(weeks.length, draftDays), programStart));
     setEditingDays(false);
     showToast("Training days updated.");
   };
@@ -1275,14 +1260,7 @@ function dateKey(d) {
   return d.toISOString().slice(0, 10);
 }
 
-function weekNumberForDate(programStart, date) {
-  const start = new Date(programStart);
-  start.setHours(0, 0, 0, 0);
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const diffDays = Math.floor((d - start) / (1000 * 60 * 60 * 24));
-  return Math.floor(diffDays / 7) + 1;
-}
+// weekNumberForDate lives in src/lib/plan.js (tested).
 
 function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLogged, totalSessions, sessionDurations, adjustmentMins }) {
   const [monthOffset, setMonthOffset] = useState(0);
@@ -1481,7 +1459,6 @@ export default function SofaToSingletrack() {
   const [notifAsked, setNotifAsked] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [reminderTime, setReminderTime] = useState("17:30");
-  const [showNotifPrompt, setShowNotifPrompt] = useState(false);
   const [lastActivityAt, setLastActivityAt] = useState(null); // ms epoch of the last logged/ad-hoc ride
   const [comebackNudgeShown, setComebackNudgeShown] = useState(false); // has the one-time "miss you" banner ever fired
   const [showComebackNudge, setShowComebackNudge] = useState(false);
@@ -1577,7 +1554,8 @@ export default function SofaToSingletrack() {
       // any session-copy/effort/video updates shipped since they started,
       // instead of freezing them on whatever content existed at signup time.
       const chosenDays = (saved.profile && saved.profile.chosenDays) || saved.weeks[0].sessions.map((s) => s.day);
-      setWeeks(buildProgramme(saved.weeks.length, chosenDays));
+      // Week 1 is cut to the days on or after the start, exactly as it was when the programme was built (keys depend on it).
+      setWeeks(trimWeekOne(buildProgramme(saved.weeks.length, chosenDays), saved.programStart ? new Date(saved.programStart) : new Date()));
     } else if (saved.weeks) {
       setWeeks(saved.weeks);
     }
@@ -1944,8 +1922,14 @@ export default function SofaToSingletrack() {
   };
 
   const startProgramme = () => {
+    // The programme starts now (not when the app was first opened), and week 1 is this calendar week: the rides whose
+    // day has already gone are dropped from it. If none are left this week, it starts next Monday instead.
+    const start = programmeStartFor(new Date(), weeks[0]);
+    const plan = trimWeekOne(weeks, start);
+    setProgramStart(start);
+    setWeeks(plan);
     setStage("dashboard");
-    const first = weeks[0].sessions[0];
+    const first = plan[0].sessions[0];
     const welcomeTemplate = COACH_SCENARIOS.welcome || "Welcome aboard, {name} — your first session, {sessionName}, is a gentle one on purpose.";
     setWelcomeNote(fillTemplate(welcomeTemplate, { name: profile.name || "rider", sessionName: first.name }));
     // The only place "have you ridden off-road before?" actually feeds into the
@@ -2007,12 +1991,21 @@ export default function SofaToSingletrack() {
     const isFirstEver = Object.keys(sessionLog).length === 0;
     const newLog = { ...sessionLog, [target.key]: feeling };
     setSessionLog(newLog);
+    // Logging the session that is being timed ends that timer: before this it kept running out of sight, holding the
+    // screen awake and speaking the old ride's cues. Its minutes are kept as the real duration.
+    let timedMins = null;
+    if (activeTimer && activeTimer.key === target.key) {
+      timedMins = Math.max(1, Math.round((Date.now() - activeTimer.startedAt) / 60000));
+      if (feeling !== "Didn't get to it") setSessionDurations((prev) => ({ ...prev, [target.key]: timedMins }));
+      setActiveTimer(null);
+      setTimerAlerted(false);
+    }
     setLastFeeling(feeling === "Didn't get to it" ? lastFeeling : feeling);
 
     // Record what they actually just did, in case they logged manually
-    // without the timer — a real timer reading already sits in
-    // sessionDurations at this point and takes priority over the planned figure.
-    if (feeling !== "Didn't get to it" && !(target.key in sessionDurations)) {
+    // without the timer — a real timer reading (the one just stopped above, or one
+    // already in sessionDurations) takes priority over the planned figure.
+    if (feeling !== "Didn't get to it" && timedMins == null && !(target.key in sessionDurations)) {
       const effectiveMins = Math.max(5, target.session.mins + adjustmentMins);
       setSessionDurations((prev) => ({ ...prev, [target.key]: effectiveMins }));
     }
@@ -2021,7 +2014,6 @@ export default function SofaToSingletrack() {
     setAdjustWarning(applyFeelingAdjustment(feeling));
 
     const justAwarded = checkAllBadges(newLog, adHocLog);
-    if (isFirstEver && !notifAsked) setShowNotifPrompt(true);
 
     if (justAwarded.length > 0) {
       celebrateTrophies(justAwarded);
@@ -2233,11 +2225,6 @@ export default function SofaToSingletrack() {
     }
   };
 
-  const dismissNotifPrompt = (enable) => {
-    setNotifEnabled(enable);
-    setNotifAsked(true);
-    setShowNotifPrompt(false);
-  };
 
   const toggleDay = (day) => {
     setProfile((p) => {
@@ -2315,7 +2302,6 @@ export default function SofaToSingletrack() {
   return (
     <div style={{ fontFamily: "'Source Sans 3', sans-serif", background: "#000000", color: "#F4F3EF", minHeight: "100vh", position: "relative" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
         .display { font-family: 'Oswald', sans-serif; letter-spacing: 0.02em; font-weight: 600; }
         button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid #E8792B; outline-offset: 2px; }
         button { min-height: 44px; }
@@ -2853,23 +2839,6 @@ export default function SofaToSingletrack() {
                       : "We've added 5 minutes to your sessions from here since that felt easier than expected."}
                     {" "}If you're finding you need this a lot, it's worth a quick chat with a coach rather than adjusting on your own.
                   </p>
-                </div>
-              )}
-
-              {showNotifPrompt && (
-                <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
-                  <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Want a reminder for your sessions?</div>
-                  <p style={{ fontSize: 14, color: "#B9BDB8", margin: "0 0 12px", lineHeight: 1.4 }}>
-                    Totally optional — pick one time that works, and we'll nudge you on session days. You can turn this off anytime.
-                  </p>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-                    <span style={{ fontSize: 15, color: "#F4F3EF" }}>Remind me at</span>
-                    <input type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} style={{ background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "6px 8px", fontSize: 15 }} />
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => dismissNotifPrompt(true)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Yes, remind me</button>
-                    <button onClick={() => dismissNotifPrompt(false)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 14px", fontSize: 15, cursor: "pointer" }}>No thanks</button>
-                  </div>
                 </div>
               )}
 

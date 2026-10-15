@@ -32,7 +32,7 @@ export default defineConfig(({ command }) => {
           name: "Sofa to Singletrack",
           short_name: "S2S",
           description: "An MTB East programme to get you off the sofa and onto singletrack.",
-          start_url: base,
+          start_url: `${base}index.html`,
           scope: base,
           display: "standalone",
           orientation: "portrait",
