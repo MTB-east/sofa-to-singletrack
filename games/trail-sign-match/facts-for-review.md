@@ -1,4 +1,4 @@
-# Trail Sign Match — 100 candidate facts for review
+# Trail Sign Match — candidate facts for review
 
 Tick the ones you want added. Categories match the in-game tags: **BRAND** (MTB East identity), **RACE** (how racing generally works), **KNOW** (general riding/safety/history knowledge).
 
@@ -142,3 +142,26 @@ Sourced from `mtbeast.co.uk` / `traversbikes.com/race-news`. Betteshanger and Tw
 - [ ] 105. MTB East swapped single-use plastic zip ties for reusable silicone ones to help the environment on race day.
 - [ ] 106. Local cycling clubs help marshal MTB East races, including Southend Wheelers, Rayleigh MTB Club and Hadleigh MTB Club.
 - [ ] 107. MTB East is run by MTB East CIC — a Community Interest Company, meaning any surplus goes back into the sport rather than to shareholders.
+
+## KNOW — XC World Cup, added 2026-09-15 (6)
+
+Real UCI Cross-Country (XCO) World Cup riders and venues — verified, not MTB East–specific.
+
+- [ ] 108. Nové Město na Moravě in the Czech Republic is a regular host on the UCI Cross-Country (XCO) World Cup calendar.
+- [ ] 109. Val di Sole in Italy is an iconic XCO World Cup venue that has also hosted world championships.
+- [ ] 110. Lenzerheide in Switzerland is a regular stop on the UCI Mountain Bike World Cup calendar.
+- [ ] 111. Swiss rider Nino Schurter holds the record for the most UCI Cross-Country World Cup race wins ever.
+- [ ] 112. Nino Schurter won a record nine overall UCI Cross-Country World Cup titles between 2010 and 2023, and retired from racing in September 2025.
+- [ ] 113. French rider Pauline Ferrand-Prévot is a five-time world cross-country champion who won Olympic XC gold at the Paris 2024 Games.
+
+## KNOW — British XC riders, added 2026-09-15 (7)
+
+Historical and current British cross-country mountain bike riders — verified via Wikipedia/UCI/Olympics/off.road.cc, not MTB East–specific.
+
+- [ ] 114. Britain's Tim Gould won the (unofficial) hill-climb title and took bronze in cross-country at the very first UCI Mountain Bike World Championships, in Durango, USA in 1990.
+- [ ] 115. Caroline Alexander, from Britain, was British National MTB Champion five times in the 1990s and 2000s (1993-95, 1997 and 2002) and European cross-country champion in 1995.
+- [ ] 116. Caroline Alexander rode mountain biking for Great Britain at two Olympic Games — Atlanta 1996 and Sydney 2000.
+- [ ] 117. Tom Pidcock, from Britain, won Great Britain's first-ever Olympic mountain bike medal — cross-country gold at the Tokyo 2020 Games.
+- [ ] 118. Tom Pidcock added the elite cross-country World Championship title in 2023, on top of his Olympic gold.
+- [ ] 119. Evie Richards, from Britain, became the first British rider ever — male or female — to win the elite cross-country World Championship, in 2021.
+- [ ] 120. Evie Richards won Commonwealth Games gold in cross-country mountain biking at Birmingham 2022.

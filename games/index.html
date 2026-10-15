@@ -22,28 +22,90 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <header id="mtbe-site-nav">
+    <!-- The MTB East site header. site-nav.js redraws this from the website's GET /api/site-nav (the same list the
+         real header uses) and swaps "Sign in" for "My Account" when signed in; the markup here is what shows without
+         script, so it must mirror site-nav.js's FALLBACK_SITE_NAV (itself a copy of the website's src/lib/site-nav.ts).
+         Dropdowns and the phone menu are <details>, so they work without script too. -->
+    <header id="mtbe-site-nav" data-static-nav data-current="/programme/games" data-return-to="/programme/games">
       <div class="inner">
         <a class="home" href="/"><img src="/brand/logo-on-black.png" alt="MTB east — home" /></a>
-        <nav class="links" aria-label="MTB East site">
-          <a href="/league">League</a>
-          <a href="/festival">Festival</a>
-          <a href="/sportive">Sportive</a>
-          <a href="/coaching">Coaching</a>
-          <a href="/programme">Sofa to Singletrack</a>
-          <a href="/programme/games" class="current">Games</a>
-          <a href="/academy">Academy</a>
+        <nav class="links" aria-label="Primary">
+          <a class="home-btn" href="/">Home</a>
+          <details class="group">
+            <summary>Events</summary>
+            <div class="dropdown"><div>
+              <a href="/league">League</a>
+              <a href="/league/rules">Rules</a>
+              <a href="/league#prices">Prices</a>
+              <a href="/league/start-list">Riders entered</a>
+              <a href="/festival">Festival</a>
+              <a href="/sportive">Sportive</a>
+              <a href="/regional-champs">Regional Champs</a>
+            </div></div>
+          </details>
           <a href="/results">Results</a>
           <a href="/news">News</a>
-          <a href="/partners">Partners</a>
+          <details class="group">
+            <summary class="current">Get Involved</summary>
+            <div class="dropdown"><div>
+              <a href="/coaching">Coaching</a>
+              <a href="/programme">Sofa to Singletrack</a>
+              <a href="/programme/games" class="current" aria-current="page">Games</a>
+              <a href="/volunteering">Volunteers</a>
+              <a href="/partners">Partners</a>
+              <a href="/academy">Academy</a>
+            </div></div>
+          </details>
           <a href="/about">About</a>
+          <a href="/contact">Contact &amp; FAQs</a>
         </nav>
         <div class="actions">
-          <a class="rider-login" href="/account/login">Rider Login</a>
-          <a class="enter-race" href="/account/login">Enter a Race</a>
+          <a class="btn-enter" href="/account/upcoming">Enter a race</a>
+          <a class="btn-account" href="/account/login?next=%2Fprogramme%2Fgames" data-account-link>Sign in</a>
+          <details class="menu">
+            <summary aria-label="Menu"><span class="bars" aria-hidden="true"><i></i><i></i><i></i></span></summary>
+            <div class="panel">
+              <nav aria-label="Primary mobile">
+                <ul>
+                  <li><a href="/">Home</a></li>
+                  <li class="group-block">
+                    <p class="heading">Events</p>
+                    <ul>
+                      <li><a href="/league">League</a></li>
+                      <li><a href="/league/rules">Rules</a></li>
+                      <li><a href="/league#prices">Prices</a></li>
+                      <li><a href="/league/start-list">Riders entered</a></li>
+                      <li><a href="/festival">Festival</a></li>
+                      <li><a href="/sportive">Sportive</a></li>
+                      <li><a href="/regional-champs">Regional Champs</a></li>
+                    </ul>
+                  </li>
+                  <li><a href="/results">Results</a></li>
+                  <li><a href="/news">News</a></li>
+                  <li class="group-block">
+                    <p class="heading">Get Involved</p>
+                    <ul>
+                      <li><a href="/coaching">Coaching</a></li>
+                      <li><a href="/programme">Sofa to Singletrack</a></li>
+                      <li><a href="/programme/games" class="current" aria-current="page">Games</a></li>
+                      <li><a href="/volunteering">Volunteers</a></li>
+                      <li><a href="/partners">Partners</a></li>
+                      <li><a href="/academy">Academy</a></li>
+                    </ul>
+                  </li>
+                  <li><a href="/about">About</a></li>
+                  <li><a href="/contact">Contact &amp; FAQs</a></li>
+                </ul>
+                <a class="btn-account panel-account" href="/account/login?next=%2Fprogramme%2Fgames" data-account-link>Sign in</a>
+              </nav>
+            </div>
+          </details>
         </div>
       </div>
     </header>
+    <!-- Same-origin file, not inline: the website's script policy ('self' + a per-request nonce) blocks inline scripts
+         in static files. A module script so the app can import the very same file. -->
+    <script type="module" src="site-nav.js"></script>
     <div id="app">
       <header class="topbar">
         <img class="mark" src="trail-sign-match/assets/header-mark.png" alt="MTB East" />

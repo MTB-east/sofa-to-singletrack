@@ -1,0 +1,521 @@
+<!doctype html>
+<title>Trail Sign Match Facts</title>
+<style>
+  :root {
+    --ink: #14171A;
+    --paper: #F4F3EF;
+    --teal: #1B8A82;
+    --tealdk: #0F5F59;
+    --orange: #E8792B;
+    --border: #2b2b2b;
+    --grey: #B9BDB8;
+    --dim: #868A85;
+    --card: #191c1f;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: #000;
+    color: var(--paper);
+    font-family: 'Source Sans 3', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 15% 8%, rgba(27,138,130,0.10), transparent 45%),
+      radial-gradient(circle at 85% 92%, rgba(230,83,15,0.08), transparent 45%);
+    pointer-events: none;
+  }
+
+  .wrap {
+    position: relative;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 28px 16px 80px;
+  }
+
+  .display {
+    font-family: 'Oswald', sans-serif;
+    letter-spacing: 0.02em;
+  }
+
+  header.top {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: rgba(10,11,12,0.92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--border);
+    margin: 0 -16px 24px;
+    padding: 16px 16px 14px;
+  }
+
+  .eyebrow {
+    font-family: 'Oswald', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--teal);
+    margin: 0 0 4px;
+  }
+
+  h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(26px, 5vw, 34px);
+    margin: 0 0 10px;
+    color: var(--paper);
+    text-wrap: balance;
+  }
+
+  .progress-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--grey);
+  }
+
+  .progress-track {
+    flex: 1;
+    height: 6px;
+    background: #232628;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--tealdk), var(--teal));
+    width: 0%;
+    transition: width 0.25s ease;
+  }
+  .progress-count {
+    font-family: 'Oswald', sans-serif;
+    color: var(--orange);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .save-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .save-btn {
+    font-family: 'Oswald', sans-serif;
+    font-size: 12.5px;
+    letter-spacing: 0.03em;
+    background: var(--teal);
+    color: #06110f;
+    border: 1px solid var(--teal);
+    padding: 7px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  .save-btn:hover { background: #22a89e; }
+  .save-btn:active { transform: scale(0.97); }
+  .save-btn.saved {
+    background: transparent;
+    color: var(--teal);
+  }
+
+  .save-note {
+    font-size: 11px;
+    color: var(--dim);
+    min-height: 14px;
+  }
+  .save-note.active { color: var(--teal); }
+
+  p.intro {
+    color: var(--grey);
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 62ch;
+    margin: 0 0 28px;
+  }
+  p.intro code {
+    background: #000;
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+
+  section.group {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+
+  .group-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  }
+
+  .group-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: 16px;
+    letter-spacing: 0.03em;
+    color: var(--paper);
+  }
+  .group-title .tag {
+    display: inline-block;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--tealdk);
+    background: rgba(27,138,130,0.16);
+    border: 1px solid var(--teal);
+    border-radius: 999px;
+    padding: 2px 8px;
+    margin-right: 8px;
+    vertical-align: 2px;
+  }
+  .group-title .tag.race { color: #d98a4a; background: rgba(230,83,15,0.14); border-color: var(--orange); }
+  .group-title .tag.know { color: var(--grey); background: rgba(255,255,255,0.05); border-color: var(--border); }
+
+  .group-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .group-actions button {
+    font-family: 'Oswald', sans-serif;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    padding: 4px 9px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .group-actions button:hover { border-color: var(--teal); color: var(--paper); }
+
+  .row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 11px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .row:last-child { border-bottom: none; }
+  .row.unchecked { opacity: 0.42; }
+
+  .row .num {
+    font-family: 'Oswald', sans-serif;
+    font-size: 11px;
+    color: var(--dim);
+    width: 26px;
+    flex-shrink: 0;
+    padding-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .row input[type="checkbox"] {
+    appearance: none;
+    width: 19px;
+    height: 19px;
+    border: 1.5px solid var(--grey);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-top: 1px;
+    position: relative;
+  }
+  .row input[type="checkbox"]:checked {
+    background: var(--teal);
+    border-color: var(--teal);
+  }
+  .row input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 5px;
+    height: 10px;
+    border: solid #06110f;
+    border-width: 0 2px 2px 0;
+    transform: rotate(40deg);
+  }
+  .row input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--orange);
+    outline-offset: 2px;
+  }
+
+  .row textarea {
+    flex: 1;
+    resize: none;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--paper);
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 14.5px;
+    line-height: 1.5;
+    padding: 3px 6px;
+    margin: -3px -6px;
+    overflow: hidden;
+  }
+  .row textarea:hover { border-color: var(--border); }
+  .row textarea:focus {
+    outline: none;
+    border-color: var(--teal);
+    background: rgba(27,138,130,0.06);
+  }
+
+  footer.bottom {
+    text-align: center;
+    margin-top: 36px;
+  }
+  footer.bottom img {
+    max-width: 220px;
+    width: 100%;
+    opacity: 0.85;
+    display: block;
+    margin: 0 auto 10px;
+  }
+  footer.bottom p {
+    color: var(--dim);
+    font-size: 11px;
+    margin: 0;
+  }
+
+  .loading {
+    padding: 60px 0;
+    text-align: center;
+    color: var(--dim);
+    font-family: 'Oswald', sans-serif;
+    letter-spacing: 0.04em;
+  }
+
+  @media (max-width: 480px) {
+    .row .num { display: none; }
+  }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" />
+
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow">TRAIL SIGN MATCH</p>
+    <h1>Facts review</h1>
+    <div class="progress-row">
+      <span class="progress-count" id="count">–</span>
+      <div class="progress-track"><div class="progress-fill" id="fill"></div></div>
+    </div>
+    <div class="save-row">
+      <button type="button" class="save-btn" id="saveBtn">Save now</button>
+      <p class="save-note" id="saveNote">Changes save automatically — or tap Save now.</p>
+    </div>
+  </header>
+
+  <p class="intro">
+    Tick the ones you want in the game. Edit the wording directly in any
+    box if you want it worded differently — changes save automatically.
+    Everything in <code>BRAND</code> is already traceable to the brand PDF
+    or the site; <code>RACE</code> and <code>KNOW</code> are general,
+    verifiable mountain-biking facts, not MTB East–specific claims.
+  </p>
+
+  <div id="groups">
+    <div class="loading">Loading facts…</div>
+  </div>
+
+  <footer class="bottom">
+    <p>MTB East — Trail Sign Match</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const CATEGORY_CLASS = { brand: "", race: "race", know: "know" };
+
+  let db = null;
+  let state = null; // { facts: [...] }
+  let saveTimer = null;
+
+  async function doSave() {
+    const note = document.getElementById("saveNote");
+    const btn = document.getElementById("saveBtn");
+    if (!db) return;
+    try {
+      await db.doc("review/facts").update({ facts: state.facts });
+      note.textContent = "Saved just now";
+      note.classList.add("active");
+      btn.textContent = "Saved ✓";
+      btn.classList.add("saved");
+      setTimeout(() => {
+        btn.textContent = "Save now";
+        btn.classList.remove("saved");
+      }, 1500);
+    } catch (e) {
+      note.textContent = "Couldn't save — check your connection.";
+      note.classList.remove("active");
+    }
+  }
+
+  function debounceSave() {
+    const note = document.getElementById("saveNote");
+    note.textContent = "Saving…";
+    note.classList.remove("active");
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(doSave, 500);
+  }
+
+  function saveNow() {
+    clearTimeout(saveTimer);
+    doSave();
+  }
+
+  function updateProgress() {
+    const total = state.facts.length;
+    const checked = state.facts.filter((f) => f.checked).length;
+    document.getElementById("count").textContent = `${checked} / ${total} selected`;
+    document.getElementById("fill").style.width = total ? `${(checked / total) * 100}%` : "0%";
+  }
+
+  function autosize(el) {
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }
+
+  function render() {
+    const container = document.getElementById("groups");
+    container.innerHTML = "";
+
+    const sections = [];
+    const seen = new Set();
+    for (const f of state.facts) {
+      if (!seen.has(f.section)) {
+        seen.add(f.section);
+        sections.push(f.section);
+      }
+    }
+
+    for (const section of sections) {
+      const factsInSection = state.facts.filter((f) => f.section === section);
+      const cls = CATEGORY_CLASS[factsInSection[0].category] || "";
+
+      const group = document.createElement("section");
+      group.className = "group";
+
+      const head = document.createElement("div");
+      head.className = "group-head";
+      head.innerHTML = `
+        <div class="group-title"><span class="tag ${cls}">${factsInSection[0].category.toUpperCase()}</span>${section}</div>
+        <div class="group-actions">
+          <button type="button" data-action="all">All</button>
+          <button type="button" data-action="none">None</button>
+        </div>
+      `;
+      head.querySelector('[data-action="all"]').addEventListener("click", () => {
+        factsInSection.forEach((f) => (f.checked = true));
+        render();
+        debounceSave();
+      });
+      head.querySelector('[data-action="none"]').addEventListener("click", () => {
+        factsInSection.forEach((f) => (f.checked = false));
+        render();
+        debounceSave();
+      });
+      group.appendChild(head);
+
+      for (const fact of factsInSection) {
+        const row = document.createElement("div");
+        row.className = "row" + (fact.checked ? "" : " unchecked");
+
+        const num = document.createElement("span");
+        num.className = "num";
+        num.textContent = fact.id;
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = fact.checked;
+        checkbox.setAttribute("id", `fact-${fact.id}`);
+        checkbox.addEventListener("change", () => {
+          fact.checked = checkbox.checked;
+          row.classList.toggle("unchecked", !fact.checked);
+          updateProgress();
+          debounceSave();
+        });
+
+        const textarea = document.createElement("textarea");
+        textarea.value = fact.text;
+        textarea.rows = 1;
+        textarea.addEventListener("input", () => {
+          fact.text = textarea.value;
+          autosize(textarea);
+          debounceSave();
+        });
+
+        row.appendChild(num);
+        row.appendChild(checkbox);
+        row.appendChild(textarea);
+        group.appendChild(row);
+
+        requestAnimationFrame(() => autosize(textarea));
+      }
+
+      container.appendChild(group);
+    }
+
+    updateProgress();
+  }
+
+  async function start() {
+    db = await window.claude?.use?.("db").catch(() => null) ?? null;
+    if (!db) {
+      document.getElementById("groups").innerHTML =
+        '<div class="loading">This review board needs to be opened from Claude — the data connection isn\'t available here.</div>';
+      return;
+    }
+    const doc = await db.doc("review/facts").get();
+    const initialData = doc.exists ? doc.data() : undefined;
+    if (!initialData || !initialData.facts) {
+      document.getElementById("groups").innerHTML =
+        '<div class="loading">No facts loaded yet.</div>';
+      return;
+    }
+    state = { facts: initialData.facts };
+    render();
+    document.getElementById("saveBtn").addEventListener("click", saveNow);
+
+    db.doc("review/facts").onSnapshot((snap) => {
+      if (!snap || !snap.exists) return;
+      const snapData = snap.data();
+      if (!snapData || !snapData.facts) return;
+      const incomingIds = snapData.facts.map((f) => f.id).join(",");
+      const currentIds = state.facts.map((f) => f.id).join(",");
+      if (incomingIds !== currentIds) {
+        state = { facts: snapData.facts };
+        render();
+      }
+    });
+  }
+
+  if (window.claude?.hot?.ready) {
+    window.claude.hot.ready(start);
+  } else {
+    start();
+  }
+})();
+</script>

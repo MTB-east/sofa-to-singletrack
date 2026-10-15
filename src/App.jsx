@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import COACH_SCENARIOS from "./data/coach-scenarios.json";
 import { WEEKDAYS, sessionDate, weekNumberForDate, programmeStartFor, trimWeekOne, decideSync } from "./lib/plan.js";
+import { FALLBACK_SITE_NAV, loadSiteNav, currentHref, renderSiteNav, updateSiteNavAccount, wireSiteNav } from "./lib/siteNav.js";
+import "../games/site-nav.css";
 
 /*
 DESIGN PLAN — v5
@@ -738,75 +740,41 @@ function InstallPrompt({ deferredPrompt, onInstall, isIOS, isStandalone }) {
   );
 }
 
-const SITE_NAV_LINKS = [
-  { href: "/league", label: "League" },
-  { href: "/festival", label: "Festival" },
-  { href: "/sportive", label: "Sportive" },
-  { href: "/coaching", label: "Coaching" },
-  { href: "/programme", label: "Sofa to Singletrack", current: true },
-  { href: "/programme/games", label: "Games" },
-  { href: "/academy", label: "Academy" },
-  { href: "/results", label: "Results" },
-  { href: "/news", label: "News" },
-  { href: "/partners", label: "Partners" },
-  { href: "/about", label: "About" },
-];
+// Where "Sign in" brings the visitor back to afterwards (the website only allows /programme and /account addresses).
+const SITE_NAV_RETURN_TO = "/programme";
 
-// Matches the real site header (SiteHeader.tsx + HeaderAuthButtons.tsx in
-// the website repo) almost exactly — same 64px row, Oswald text-sm links,
-// #111111/#c4470d, and critically the same real logo + a single prominent
-// auth CTA on the right (the real header dropped its second redundant
-// "Enter a Race" button — both pointed at the same login page — so this
-// mirrors that). An earlier version matched only the nav links' own size
-// and colour and still read as "the site shrinking" once embedded, because
-// the real header's visual weight comes mostly from the logo lockup and
-// the CTA, not the link row. It shows "My account" when the visitor is
-// signed in to their MTB east account (asked of the website via
-// /api/programme/me, which shares the site's own cookies), otherwise
-// "Rider Login", which returns them here after signing in.
+// The real site header, persisting across the embed so riders can always get back to the rest of the MTB East site.
+// The list of links comes from the website itself (GET /api/site-nav, built from its src/lib/site-nav.ts, the same
+// list its own header uses), with FALLBACK_SITE_NAV in src/lib/siteNav.js (-> games/site-nav.js) when that can't be
+// reached, so this bar can't drift from the real one. Markup, styles (games/site-nav.css) and behaviour are shared
+// with the games hub: the module draws into this <header> itself, React only owns the element, like mounting a
+// plain-JS widget. The logo is the site's own /brand/logo-on-black.png (root-absolute, not BASE_URL: it isn't one of
+// this app's assets, and only resolves because the app is always embedded on the real domain). Shows "My Account"
+// when /api/programme/me says the visitor is signed in, otherwise "Sign in".
 function SiteNav({ account }) {
-  const linkStyle = (current) => ({
-    flexShrink: 0, color: current ? "#e6530f" : "#ffffff", textDecoration: "none",
-    fontSize: 14, letterSpacing: "0.02em", padding: "8px 12px", whiteSpace: "nowrap",
-  });
-  return (
-    <header style={{ position: "sticky", top: 0, zIndex: 50, background: "#111111", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-      <div style={{
-        maxWidth: 1280, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center",
-        justifyContent: "space-between", gap: 16, height: 64, fontFamily: "'Oswald', sans-serif",
-      }}>
-        <a href="/" style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-          {/* Root-absolute, not BASE_URL — this borrows the real site's own
-              /brand/logo-on-black.png (it isn't one of this app's bundled
-              assets), which only resolves because this bar is always
-              embedded on the real domain. */}
-          <img
-            src="/brand/logo-on-black.png"
-            alt="MTB east — home"
-            style={{ height: 44, width: "auto", display: "block" }}
-          />
-        </a>
-        <nav aria-label="MTB East site" style={{ display: "flex", alignItems: "center", gap: 2, overflowX: "auto", minWidth: 0 }}>
-          {SITE_NAV_LINKS.map((link) => (
-            <a key={link.href} href={link.href} style={linkStyle(link.current)}>
-              {link.label}
-            </a>
-          ))}
-        </nav>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <a
-            href={account && account.signedIn ? "/account" : "/account/login?next=/programme"}
-            style={{
-              fontSize: 14, padding: "8px 16px", background: "#c4470d", color: "#ffffff",
-              textDecoration: "none", whiteSpace: "nowrap",
-            }}
-          >
-            {account && account.signedIn ? "My account" : "Rider Login"}
-          </a>
-        </div>
-      </div>
-    </header>
-  );
+  const ref = useRef(null);
+  const [nav, setNav] = useState(FALLBACK_SITE_NAV);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSiteNav((url, options) => fetch(url, options)).then((loaded) => { if (!cancelled) setNav(loaded); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => wireSiteNav(ref.current), []);
+
+  useEffect(() => {
+    // Inside the app the address is /programme/index.html; "/programme" is the default for local dev at "/".
+    const current = currentHref(nav, window.location.pathname, "/programme");
+    renderSiteNav(ref.current, nav, { current, account, returnTo: SITE_NAV_RETURN_TO });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- account changes are patched in below, not redrawn
+  }, [nav]);
+
+  useEffect(() => {
+    updateSiteNavAccount(ref.current, nav, account, SITE_NAV_RETURN_TO);
+  }, [nav, account]);
+
+  return <header id="mtbe-site-nav" ref={ref} />;
 }
 
 function AppHeader() {
