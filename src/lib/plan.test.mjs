@@ -50,3 +50,22 @@ test("sync: a fresh plan with no rides never replaces an account that has rides"
   const serverEmpty = { stage: "dashboard", sessionLog: {}, savedAt: 9000 };
   assert.deepEqual(decideSync(localWithRides, serverEmpty), { action: "saveToAccount" }, "rides beat an empty but newer account copy");
 });
+
+test("sync: a deliberate carry-on with an empty log is not a stray new plan", () => {
+  const finished = { stage: "dashboard", sessionLog: { "1-0": "Good", "8-2": "Good" }, programStart: "2026-07-06T09:00:00.000Z", savedAt: 1000 };
+  const carryOn = { stage: "dashboard", sessionLog: {}, programStart: "2026-10-15T09:08:00.000Z", continuedFrom: "2026-07-06T09:00:00.000Z", savedAt: 5000 };
+  // A fresh plan on a new phone (no continuedFrom) still loses to the account's rides.
+  const fresh = { stage: "dashboard", sessionLog: {}, programStart: "2026-10-15T09:08:00.000Z", savedAt: 5000 };
+  assert.deepEqual(decideSync(fresh, finished), { action: "useAccount", keepBackup: true });
+  // "Carry on with weeks 8 to 11" pressed on this phone, not pushed yet: it beats the server's finished copy.
+  assert.deepEqual(decideSync(carryOn, finished), { action: "saveToAccount" });
+  // A second phone still holding the finished copy does not overwrite the account's carry-on.
+  assert.deepEqual(decideSync(finished, carryOn), { action: "useAccount", keepBackup: true });
+  // A carry-on from some other programme is just a new plan with no rides: the rides win.
+  const otherCarryOn = { ...carryOn, continuedFrom: "2026-01-05T09:00:00.000Z" };
+  assert.deepEqual(decideSync(otherCarryOn, finished), { action: "useAccount", keepBackup: true });
+  // Once the carry-on has rides of its own the newest-savedAt rule applies as before.
+  const carryOnRidden = { ...carryOn, sessionLog: { "1-0": "Good" } };
+  assert.deepEqual(decideSync(carryOnRidden, { ...finished, savedAt: 9000 }), { action: "useAccount", keepBackup: true });
+  assert.deepEqual(decideSync(carryOnRidden, finished), { action: "saveToAccount" });
+});

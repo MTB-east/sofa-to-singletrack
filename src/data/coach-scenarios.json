@@ -1,5 +1,5 @@
 {
-  "_notice": "Drafted for MTB East in the structure of the coach content form (Sections A to D), in the voice set out under 'voice'. The coach has not yet reviewed these: he should read them and change anything that isn't how he would say it.",
+  "_notice": "Drafted for MTB East in the structure of the coach content form (Sections A to D), in the voice set out under 'voice'. The MTB east crew has not yet reviewed these: they should read them and change anything that isn't how they would say it.",
   "welcome": "Welcome aboard, {name} — your first session, {sessionName}, is a gentle one on purpose. No pressure, just get a feel for the bike.",
   "checkins": {
     "early": {
@@ -32,6 +32,24 @@
     "taper": "Feeling like you haven't done enough this week is completely normal — the whole point of a taper is doing less so your legs are fresh, not more. Trust the rest.",
     "dayBefore": "Get your kit and bike sorted the night before so the morning is calm. Eat a meal you know agrees with you, and try to get a decent night's sleep — nerves are normal and won't stop you riding well.",
     "raceMorning": "Nerves before a first race are completely normal, even for people who've raced for years. Remember the goal today isn't a result — it's finishing your own race, at your own pace. Enjoy it."
+  },
+  "junior": {
+    "_notice": "Sofa to Singletrack Juniors: every line here is written to the grown-up riding with the child, not to the child. These were not part of the signed-off coaching plans document; they are drafted for the MTB east crew to review and change before they are treated as final.",
+    "welcome": "Welcome, {name}'s grown-up. The first game, {sessionName}, is short on purpose: fifteen minutes, somewhere flat, and you count out loud. Helmet on before the bike moves, and stay within sight the whole time. When it is done, tick it here and {name} collects the first badge.",
+    "checkins": {
+      "_notice": "The grown-up answers for the child after each game. Nothing medical, nothing about pushing harder.",
+      "Loved it": "That is the whole plan working. Nothing to change: same place, next game, and let them tell someone about the badge.",
+      "Fine": "Fine is good. Fine means it was not scary and not boring. The next game adds one small thing, so keep the pace and the place the same.",
+      "Found it hard": "Play the same game again before moving on, somewhere flatter if you can, and stop while they are still enjoying it. The badge is for trying, not for perfect. If it was the standing or the braking that was hard, lower the saddle a touch.",
+      "Had to stop early": "Stopping early is fine and you made the right call. Next time out, halve the number of goes and finish with something they already like doing. A short, happy session beats a long one every time.",
+      "Didn't get to it this week": "Nothing lost. The game is still there and so is the badge. Pick a day this week, keep it short, and do the same game rather than skipping ahead."
+    },
+    "raceWeek": {
+      "taper": "Race week for a Junior is a normal week with shorter games. Nothing new to learn now: a lap of the park, a whistle stop or two, and plenty of talking about what race day looks like, so nothing is a surprise.",
+      "dayBefore": "Bike checked together tonight, helmet and clothes laid out, a snack packed. Tell them the plan for the morning in order: park, sign on, look at the course, line up, ride, cake. Early night for everyone.",
+      "raceMorning": "Fun race means fun race. Get there with time to walk a bit of the course together, remind them where you will be standing, and that finishing is the whole job. Take the photo at the finish, not the start."
+    },
+    "graduation": "Sixteen games, sixteen badges, and a child who rides a trail standing up. A fun race is next if they want it, and the whole plan works again at the next age up: same games, bigger child, longer laps."
   },
   "voice": {
     "always": "Keep it plain, practical and specific — real advice you'd actually say trackside, not generic hype. End on something forward-looking (the next session), not just a pat on the back.",

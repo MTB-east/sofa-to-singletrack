@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import COACH_SCENARIOS from "./data/coach-scenarios.json";
-import { WEEKDAYS, sessionDate, weekNumberForDate, programmeStartFor, trimWeekOne, decideSync } from "./lib/plan.js";
+import {
+  WEEKDAYS, sessionDate, weekNumberForDate, programmeStartFor, trimWeekOne, decideSync, mondayOf,
+  PLAN_VERSION, EFFORT_WORDS, RACE_READY_TEXT, JUNIOR_INTRO, JUNIOR_BADGES,
+  buildAdultPlan, buildContinuationPlan, buildRaceReadyPlan, buildJuniorPlan,
+  planForRace, weeksUntil, weeksFromSaved, reassignDays, roleLabel, isJuniorSession,
+} from "./lib/plan.js";
 import { FALLBACK_SITE_NAV, loadSiteNav, currentHref, renderSiteNav, updateSiteNavAccount, wireSiteNav } from "./lib/siteNav.js";
 import "../games/site-nav.css";
 
@@ -98,150 +103,129 @@ function nextCue(cues, elapsedMs, spoken) {
 const TEXT_SCALES = { standard: 1, large: 1.12, larger: 1.25, largest: 1.4 };
 const TEXT_SIZE_KEY = "sofaToSingletrack:textSize";
 
-// One canonical 3-month (12-week) plan. Shorter programmes (1 or 2 months)
-// just use the first 4 or 8 weeks of this same plan rather than a separately
-// scaled version — see buildProgramme below. Session detail text uses a
-// {mins} placeholder so the duration can shift with a rider's ±5 min
-// difficulty adjustment (see applyFeelingAdjustment) without rewriting copy.
-// Sessions work equally well outdoors or on an indoor trainer/gym bike —
-// there's no separate indoor variant, riders are told this once at signup.
-// Add a `video: "<YouTube video ID>"` field to any session below to swap its
-// "coming soon" placeholder for a real thumbnail linking out to YouTube —
-// the ID is the part after ?v= in the video's URL. Leave it off for now.
-const PHASES = [
-  {
-    title: "Off the sofa", focus: "Short flat rides, get comfortable on the bike",
-    sessions: [
-      { name: "Easy spin", mins: 20, effort: "low", detail: "{mins} min, flat path, stay seated, get used to the bike" },
-      { name: "Easy spin", mins: 20, effort: "low", detail: "{mins} min, flat path, practice looking up rather than at the front wheel" },
-      { name: "Steady ride", mins: 30, effort: "low", detail: "{mins} min, flat/gentle terrain, 2–3 stops to practice clipping in/out" },
-    ],
-  },
-  {
-    title: "Finding balance", focus: "Basic bike handling: braking, cornering, body position",
-    sessions: [
-      { name: "Handling drills", mins: 25, effort: "low", detail: "{mins} min: figure-of-8s in a car park or field, slow-speed balance" },
-      { name: "Braking practice", mins: 25, effort: "med", detail: "{mins} min flat ride, 8x practice stops — front/rear brake balance" },
-      { name: "Easy trail ride", mins: 35, effort: "low", detail: "{mins} min gentle wide singletrack, focus on body position on corners" },
-    ],
-  },
-  {
-    title: "First climbs", focus: "Gentle gradients, gear selection, pacing",
-    sessions: [
-      { name: "Gear practice", mins: 25, effort: "low", detail: "{mins} min flat, shift before (not during) short rises" },
-      { name: "Easy spin", mins: 25, effort: "low", detail: "{mins} min recovery ride, low effort" },
-      { name: "Hill intro", mins: 40, effort: "med", detail: "{mins} min incl. 3x short gentle climbs, walk anything too steep" },
-    ],
-  },
-  {
-    title: "Rolling terrain", focus: "Mixed surface rides, short technical sections",
-    sessions: [
-      { name: "Mixed terrain", mins: 35, effort: "med", detail: "{mins} min, alternate gravel and packed dirt" },
-      { name: "Skills session", mins: 25, effort: "low", detail: "{mins} min, small roots/ruts at walking pace, practice weighting pedals" },
-      { name: "Rolling ride", mins: 45, effort: "med", detail: "{mins} min rolling singletrack, no time pressure" },
-    ],
-  },
-  {
-    title: "Building endurance", focus: "Longer rides, fuelling practice on the bike",
-    sessions: [
-      { name: "Steady ride", mins: 40, effort: "med", detail: "{mins} min, conversational pace" },
-      { name: "Fuelling practice", mins: 45, effort: "med", detail: "{mins} min, eat a snack and drink at the 20-min mark" },
-      { name: "Longer ride", mins: 60, effort: "high", detail: "{mins} min mixed terrain, first ride over an hour" },
-    ],
-  },
-  {
-    title: "Race pace", focus: "Interval efforts, simulate race-length effort",
-    sessions: [
-      { name: "Intervals", mins: 35, effort: "high", detail: "{mins} min with 5x2 min hard-but-controlled, easy spin between" },
-      { name: "Easy spin", mins: 25, effort: "low", detail: "{mins} min recovery, low effort" },
-      { name: "Race simulation", mins: 50, effort: "high", detail: "{mins} min at the effort you'd expect to hold in a race" },
-    ],
-  },
-  {
-    title: "Course skills", focus: "Ride a real course, practice starts and lines",
-    sessions: [
-      { name: "Line choice", mins: 30, effort: "med", detail: "{mins} min varied terrain, pick the smoothest line, not the fastest" },
-      { name: "Start practice", mins: 20, effort: "high", detail: "{mins} min, 6x practice starts from a standstill" },
-      { name: "Course recon", mins: 40, effort: "low", detail: "Ride an actual race course (or similar terrain) at an easy pace" },
-    ],
-  },
-  {
-    title: "Taper", focus: "Short easy spins, rest, kit check",
-    sessions: [
-      { name: "Easy spin", mins: 20, effort: "low", detail: "{mins} min, very easy, legs should feel fresh afterwards" },
-      { name: "Kit check", mins: 15, effort: "low", detail: "{mins} min ride to test bike, tyre pressure, and race-day kit" },
-      { name: "Rest", mins: 15, effort: "low", detail: "Full rest or a gentle {mins} min spin only — save your legs for race day" },
-    ],
-  },
-];
+// The plans themselves (the 12-week plan, the 8-week and 4-week Taster cuts of it, the two-day version, the Race ready
+// block and Sofa to Singletrack Juniors) live in src/lib/plan.js, transcribed from the signed-off coaching plans
+// document so the words riders read are the document's words. A programme saved before planVersion 2 keeps its saved
+// weeks verbatim on load (its old session copy used a {mins} placeholder, which effectiveSession still fills).
+// Add a `video: "<YouTube video ID>"` field to any session to show a thumbnail linking out to YouTube.
+
+// The plan the welcome screen draws and a brand-new rider holds before setup: the 8-week plan on Tue/Thu/Sat.
+const defaultPlan = () => buildAdultPlan({ lengthWeeks: 8, daysPerWeek: 3, chosenDays: ["Tue", "Thu", "Sat"], planType: "months" });
 
 const SESSION_ICONS = {
-  "Easy spin": "🌱", "Steady ride": "🚴", "Handling drills": "🎯", "Braking practice": "🛑",
-  "Easy trail ride": "🌲", "Gear practice": "⚙️", "Hill intro": "⛰️", "Mixed terrain": "🪨",
-  "Skills session": "🎯", "Rolling ride": "🌄", "Fuelling practice": "🍌", "Longer ride": "🕒",
-  "Intervals": "⚡", "Race simulation": "🏁", "Line choice": "🧭", "Start practice": "🚦",
-  "Course recon": "🗺️", "Kit check": "🎒", "Rest": "😴",
+  // The signed-off plans
+  "Skills": "🎯", "Steady": "🚴", "The long one": "🌄", "Intervals": "⚡", "Race simulation": "🏁", "Course recon": "🗺️",
+  "Easy spin": "🌱", "Kit check ride": "🎒", "Graduation ride": "🎓", "Skill then ride": "🎯",
+  // Juniors
+  "Badger stands up": "🦡", "Look where the squirrel went": "🌳", "Whistle stops": "📣", "Puddle Pilot": "💦",
+  "Squirrel sprints": "🐿️", "Gear for the hill": "⚙️", "Bottle slalom": "🧴", "Follow the leader": "🚸",
+  "Stick jumps": "🪵", "Badger's bumpy trail": "🌲", "Slope slider": "⛰️", "The snack stop": "🍌",
+  "Lap the park": "🔁", "Start line": "🚦", "M-check with a grown-up": "🔧", "Graduation lap": "🎓",
+  // Programmes saved before planVersion 2
+  "Steady ride": "🚴", "Handling drills": "🎯", "Braking practice": "🛑", "Easy trail ride": "🌲", "Gear practice": "⚙️",
+  "Hill intro": "⛰️", "Mixed terrain": "🪨", "Skills session": "🎯", "Rolling ride": "🌄", "Fuelling practice": "🍌",
+  "Longer ride": "🕒", "Line choice": "🧭", "Start practice": "🚦", "Kit check": "🎒", "Rest": "😴",
 };
+const iconFor = (name) => SESSION_ICONS[name] || (name && name.startsWith("Skill then ride") ? SESSION_ICONS["Skill then ride"] : "🚵");
 
+// The talk test. Keys and colours are unchanged from the old Easy / Moderate / Hard, so saved programmes map straight on.
 const EFFORT_META = {
-  low: { label: "Easy effort", color: "#1B8A82", level: 1 },
-  med: { label: "Moderate effort", color: "#E8792B", level: 2 },
-  high: { label: "Hard effort", color: "#E24B4A", level: 3 },
+  low: { label: EFFORT_WORDS.low.word, color: "#1B8A82", level: 1 },
+  med: { label: EFFORT_WORDS.med.word, color: "#E8792B", level: 2 },
+  high: { label: EFFORT_WORDS.high.word, color: "#E24B4A", level: 3 },
 };
 
-function EffortDots({ effort }) {
+function EffortDots({ effort, note }) {
   const meta = EFFORT_META[effort];
   if (!meta) return null;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
       <div style={{ display: "flex", gap: 3 }}>
         {[1, 2, 3].map((n) => (
           <span key={n} style={{ width: 6, height: 6, borderRadius: "50%", background: n <= meta.level ? meta.color : "#3a3a3a" }} />
         ))}
       </div>
       <span style={{ fontSize: 14, fontWeight: 600, color: meta.color }}>{meta.label}</span>
+      {note && note !== meta.label && <span style={{ fontSize: 14, color: "#B9BDB8" }}>· {note}</span>}
     </div>
   );
 }
 
-// How many weeks each phase above occupies in the 12-week plan — more time on
-// the early habit-building phases, less on the later ones. Sums to 12.
-const PHASE_WEEK_COUNTS = [2, 2, 1, 2, 2, 1, 1, 1];
-const TEMPLATE = PHASES.flatMap((phase, i) => Array(PHASE_WEEK_COUNTS[i]).fill(phase));
+// The talk test, as the rider reads it in Tips & advice.
+function TalkTest() {
+  return (
+    <div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Effort: the talk test</div>
+      <p style={{ margin: "0 0 8px", fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>Every session uses the same three words.</p>
+      {Object.keys(EFFORT_WORDS).map((k) => (
+        <div key={k} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
+          <div style={{ minWidth: 92 }}><EffortDots effort={k} /></div>
+          <div style={{ fontSize: 15, lineHeight: 1.5, color: "#F4F3EF" }}>{EFFORT_WORDS[k].feels}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-// Applies a rider's current ±5 min adjustment to a session's duration and
-// substitutes it into the detail text (never below 5 min).
+// Applies a rider's current ±5 min adjustment to an adult session's duration (never below 5 min). Juniors sessions
+// are never adjusted. Old session copy used a {mins} placeholder, which is still filled here.
+// Whether an effort note says the same as the session's detail, ignoring case and a trailing full stop: week 6's
+// "Breathing in the middle 10 minutes" is also its whole detail, and it should not be shown twice.
+const sameNote = (note, detail) => {
+  const norm = (t) => String(t || "").trim().replace(/[.!]+$/, "").toLowerCase();
+  return !!note && norm(note) === norm(detail);
+};
+
 function effectiveSession(session, adjustmentMins) {
-  const mins = Math.max(5, session.mins + (adjustmentMins || 0));
+  const mins = isJuniorSession(session) ? session.mins : Math.max(5, session.mins + (adjustmentMins || 0));
   return {
     ...session,
     mins,
-    detail: fillTemplate(session.detail, { mins }),
+    detail: fillTemplate(session.detail || "", { mins }),
   };
 }
 
-// chosenDays.length is 2 or 3. For a 2-day week we use the first and last
-// template session (the lightest and the main ride), skipping the middle one.
-// totalWeeks is always a slice of the front of the 12-week TEMPLATE — a
-// 1-month plan is literally weeks 1-4 of the 3-month plan, not a separately
-// scaled-down version of it.
-function buildProgramme(totalWeeks, chosenDays) {
-  const days = chosenDays && chosenDays.length ? chosenDays : ["Tue", "Thu", "Sat"];
-  const weeks = [];
-  const n = Math.min(totalWeeks, TEMPLATE.length);
-  for (let i = 0; i < n; i++) {
-    const src = TEMPLATE[i];
-    const base = days.length === 2 ? [src.sessions[0], src.sessions[2]] : src.sessions;
-    const sessions = base.map((s, idx) => ({ ...s, day: days[idx] }));
-    weeks.push({
-      n: i + 1,
-      title: src.title,
-      focus: src.focus,
-      sessions,
-      elev: Math.round(8 + (i / Math.max(TEMPLATE.length - 1, 1)) * 84),
-    });
-  }
-  return weeks;
+// The "Done when:" lines of a session (a two-day "Skill then ride" session carries both of its rides' lines).
+const doneWhenLines = (session) => (session && session.doneWhen ? String(session.doneWhen).split("\n").filter(Boolean) : []);
+
+function DoneWhen({ session, compact }) {
+  const lines = doneWhenLines(session);
+  if (lines.length === 0) return null;
+  return (
+    <div style={{ background: "#0d0d0d", borderLeft: "3px solid #1B8A82", borderRadius: 6, padding: compact ? "8px 10px" : "10px 12px", margin: compact ? "0 0 10px" : "0 0 14px" }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: "#1B8A82", textTransform: "uppercase", letterSpacing: "0.06em" }}>Done when:</span>
+      {lines.length === 1 ? (
+        <span style={{ fontSize: 15, color: "#F4F3EF", lineHeight: 1.5 }}> {lines[0]}</span>
+      ) : (
+        <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 15, color: "#F4F3EF", lineHeight: 1.5 }}>
+          {lines.map((l, i) => <li key={i}>{l}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// A Juniors game: where to play it, what the child does, what the grown-up does, and the badge.
+function JuniorGame({ session }) {
+  const row = (label, text) => (text ? (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+      <div style={{ fontSize: 16, color: "#F4F3EF", lineHeight: 1.5 }}>{text}</div>
+    </div>
+  ) : null);
+  return (
+    <div style={{ marginBottom: 6 }}>
+      {row("Where", session.where)}
+      {row("What the child does", session.child)}
+      {row("What the grown-up does", session.grownUp)}
+      {session.badge && (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 10, padding: "6px 10px", marginBottom: 10 }}>
+          <span aria-hidden="true">🏅</span>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Badge: {session.badge}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const NUTRITION_TIPS = [
@@ -288,7 +272,16 @@ const BIKE_SETUP_STEPS = [
 // copy, longest first, so multi-word terms win over any shorter term nested
 // inside them. Keep entries specific enough to avoid matching unrelated words.
 const GLOSSARY = {
+  "chatting": EFFORT_WORDS.low.feels,
+  "breathing": EFFORT_WORDS.med.feels,
+  "can't talk": EFFORT_WORDS.high.feels,
+  "ready position": "Standing on the pedals, level cranks, elbows bent, eyes up: the position the bike wants you in for anything bumpy.",
+  "m-check": "A top-to-bottom safety check that traces an M over the bike: front wheel, bars and brakes, cranks and chain, saddle, back wheel. The Quick bike setup check in Tips & advice covers the main points.",
+  "heavy feet light hands": "Weight through the pedals, a relaxed grip on the bars, so the bike can move under you.",
+  "bridleway": "A path where walkers, horses and bikes are all allowed. Give way to walkers and horse riders.",
+  "green or blue grade": "Trail centre grades: green is the easiest, blue the next step up. Both are fine for a first trail.",
   "clipping in": "Locking your shoe into a clip-in (clipless) pedal. If you're using flat pedals, this doesn't apply to you — flat pedals are a totally fine way to start.",
+  "figure-of-eights": "Riding a figure-of-eight pattern at slow speed — a simple way to build balance and low-speed bike control.",
   "figure-of-8s": "Riding a figure-of-eight pattern at slow speed — a simple way to build balance and low-speed bike control.",
   "singletrack": "A narrow off-road trail, usually wide enough for one rider at a time — the classic mountain-biking trail.",
   "cadence": "How fast you're pedalling (revolutions per minute). A smooth, comfortable spin is usually better than mashing hard on each stroke.",
@@ -412,7 +405,7 @@ function downloadSessionICS(session, weekNum, weekTitle, programStart) {
     `UID:${Date.now()}-w${weekNum}-${session.day}@sofatosingletrack`,
     `DTSTAMP:${toICSDate(new Date())}`, `DTSTART:${toICSDate(start)}`, `DTEND:${toICSDate(end)}`,
     `SUMMARY:${session.name} — Week ${weekNum}: ${weekTitle}`,
-    `DESCRIPTION:${session.detail.replace(/,/g, "\\,")}`,
+    `DESCRIPTION:${(session.detail || session.child || "").replace(/,/g, "\\,")}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
   const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
@@ -487,9 +480,9 @@ function MarshalNote({ card }) {
 }
 
 // The next round the signed-in account has entered: where, when, the forecast once there is one, and the day's timings.
-function RaceWeekCard({ entry }) {
+function RaceWeekCard({ entry, junior }) {
   const days = entry.daysAway;
-  const coachNote = raceWeekNote(days);
+  const coachNote = raceWeekNote(days, junior);
   const week = days <= 10;
   const dateText = new Date(entry.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const later = entry.forecastLater ? new Date(entry.forecastLater + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : null;
@@ -657,8 +650,28 @@ function AccountCard({ account, onHide }) {
   );
 }
 
-// The health note, shown before a rider starts. Plain and specific rather than a line of small print.
-function GpNote() {
+// The health note, shown before a rider starts. Plain and specific rather than a line of small print. For a Junior it
+// is addressed to the grown-up riding with them.
+function GpNote({ forGrownUp }) {
+  if (forGrownUp) {
+    return (
+      <div role="note" style={{ background: "#161616", border: "2px solid #E8792B", borderRadius: 12, padding: "16px 18px", marginBottom: 20 }}>
+        <p style={{ margin: "0 0 10px", fontSize: 16, fontWeight: 700, color: "#E8792B" }}>Read this as the grown-up riding with them.</p>
+        <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>Check with the child's GP first if</div>
+        <ul style={{ margin: "0 0 10px", paddingLeft: 20, fontSize: 16, lineHeight: 1.6 }}>
+          <li>they have a health condition, or they're recovering from an injury or illness</li>
+          <li>they take medication, or they've been told to be careful with exercise</li>
+          <li>they haven't been active for a long time</li>
+        </ul>
+        <p style={{ margin: "0 0 8px", fontSize: 16, lineHeight: 1.5 }}>
+          Stop and get medical advice if they feel chest pain, dizziness, unusual breathlessness or pain that doesn't ease.
+        </p>
+        <p style={{ margin: 0, fontSize: 16, lineHeight: 1.5 }}>
+          Ride with them within sight the whole time, and the helmet goes on before the bike moves.
+        </p>
+      </div>
+    );
+  }
   return (
     <div role="note" style={{ background: "#161616", border: "2px solid #E8792B", borderRadius: 12, padding: "16px 18px", marginBottom: 20 }}>
       <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>Check with your GP first if</div>
@@ -690,10 +703,12 @@ function TextSizeControl({ value, onChange }) {
 }
 
 // What the ride timer can and can't do about the screen and the voice, said plainly.
-function RideTimerStatus({ running, wakeState, voiceOn, onToggleVoice }) {
+// beep: false on a Junior session, which has voice cues but no countdown beep.
+function RideTimerStatus({ running, wakeState, voiceOn, onToggleVoice, beep = true }) {
   const wakeSupported = typeof navigator !== "undefined" && "wakeLock" in navigator;
   const box = { borderRadius: 10, padding: "12px 14px", marginBottom: 12, fontSize: 15, lineHeight: 1.5 };
   const warn = (running && (wakeState === "unsupported" || wakeState === "blocked")) || (!running && !wakeSupported);
+  const alerts = beep ? "the beep and voice cues" : "the voice cues";
   return (
     <div>
       {speechSupported() ? (
@@ -707,15 +722,15 @@ function RideTimerStatus({ running, wakeState, voiceOn, onToggleVoice }) {
         <div role="note" style={{ ...box, background: "#2a1a10", border: "1px solid #E8792B", color: "#F4F3EF" }}>
           <strong>Your screen may lock while you ride.</strong>{" "}
           {running ? "This phone or browser won't let the app keep the screen awake. " : "This phone or browser can't keep the screen awake for the app. "}
-          The timer still keeps the right time, but the beep and voice cues can't play while the screen is locked. To avoid it, set your phone's Auto-Lock (iPhone) or Screen timeout (Android) to a longer time before you start, and keep the app open in front of you.
+          The timer still keeps the right time, but {alerts} can't play while the screen is locked. To avoid it, set your phone's Auto-Lock (iPhone) or Screen timeout (Android) to a longer time before you start, and keep the app open in front of you.
         </div>
       ) : running && wakeState === "on" ? (
         <p style={{ ...box, background: "#0d0d0d", color: "#B9BDB8", margin: "0 0 12px" }}>
-          ✓ The app is asking your phone to keep the screen on. If your screen locks anyway (some phones ignore this), the timer stays right, but the beep and voice cues pause until you unlock it.
+          ✓ The app is asking your phone to keep the screen on. If your screen locks anyway (some phones ignore this), the timer stays right, but {alerts} pause until you unlock it.
         </p>
       ) : !running ? (
         <p style={{ ...box, background: "#0d0d0d", color: "#B9BDB8", margin: "0 0 12px" }}>
-          When you start, the app asks your phone to keep the screen on. Some phones ignore this; if the screen locks, the timer stays right, but the beep and voice cues pause until you unlock it. Turn your volume up.
+          When you start, the app asks your phone to keep the screen on. Some phones ignore this; if the screen locks, the timer stays right, but {alerts} pause until you unlock it. Turn your volume up.{beep ? "" : " No beep at the end on a Junior session: the voice says when the time is up."}
         </p>
       ) : null}
     </div>
@@ -865,7 +880,7 @@ function TipsAndAdvice() {
         <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
       </button>
       {!expanded && (
-        <p style={{ margin: "10px 0 0", fontSize: 14, color: "#868A85", lineHeight: 1.4 }}>Fuelling, bike care, trail etiquette, bike setup, and common questions</p>
+        <p style={{ margin: "10px 0 0", fontSize: 14, color: "#868A85", lineHeight: 1.4 }}>Fuelling, bike care, trail etiquette, the talk test, bike setup, and common questions</p>
       )}
       {expanded && (
         <div style={{ marginTop: 14 }}>
@@ -884,6 +899,10 @@ function TipsAndAdvice() {
           <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Trail etiquette</div>
           <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5 }}>{TRAIL_ETIQUETTE_TIPS[trailTipIndex]}</p>
           <button onClick={() => setTrailTipIndex((i) => (i + 1) % TRAIL_ETIQUETTE_TIPS.length)} style={{ background: "none", border: "none", color: "#E8792B", fontWeight: 600, fontSize: 15, cursor: "pointer", padding: 0 }}>Next tip →</button>
+
+          <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+
+          <TalkTest />
 
           <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
@@ -924,7 +943,8 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
   const saveDays = () => {
     if (draftDays.length !== profile.sessionsPerWeek) return;
     setProfile({ ...profile, chosenDays: draftDays });
-    setWeeks(trimWeekOne(buildProgramme(weeks.length, draftDays), programStart));
+    // The programme itself is kept (and so is its log): only the days move.
+    setWeeks(reassignDays(weeks, draftDays));
     setEditingDays(false);
     showToast("Training days updated.");
   };
@@ -1061,9 +1081,24 @@ function formatElapsed(ms) {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
-function playTimerAlertSound() {
+// The beep needs an AudioContext that was created or resumed inside a tap: iPhones keep one made any other way silent.
+// startRideTimer makes it in the Start tap and hands it here; a context made here as a fallback may be silent on iOS.
+function getAudioContext(existing) {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    const ctx = existing && existing.state !== "closed" ? existing : new Ctx();
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    return ctx;
+  } catch (e) {
+    return null;
+  }
+}
+
+function playTimerAlertSound(existingCtx) {
+  try {
+    const ctx = getAudioContext(existingCtx);
+    if (!ctx) return;
     const beep = (startTime, freq) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -1091,8 +1126,9 @@ function fillTemplate(str, vars) {
 }
 
 // The coach's race-week message for how far away the race is: the week before (taper), the day before, and race morning.
-function raceWeekNote(daysAway) {
-  const rw = COACH_SCENARIOS.raceWeek || {};
+// For a Junior rider the message is written to the grown-up.
+function raceWeekNote(daysAway, junior) {
+  const rw = (junior ? COACH_SCENARIOS.junior && COACH_SCENARIOS.junior.raceWeek : COACH_SCENARIOS.raceWeek) || {};
   if (daysAway === 0) return rw.raceMorning || null;
   if (daysAway === 1) return rw.dayBefore || null;
   if (daysAway >= 2 && daysAway <= 7) return rw.taper || null;
@@ -1110,7 +1146,12 @@ const COACH_TIP_TITLES = {
   comparison: "Comparing yourself with other riders",
 };
 
-function getCoachNote(target, feeling) {
+function getCoachNote(target, feeling, junior) {
+  if (junior) {
+    const j = (COACH_SCENARIOS.junior && COACH_SCENARIOS.junior.checkins) || {};
+    const key = feeling === SKIPPED ? JUNIOR_SKIPPED_LABEL : feeling;
+    return j[key] || j["Fine"] || GENERIC_COACH_FALLBACK;
+  }
   const phase = target.weekN <= 3 ? "early" : "later";
   const phaseScenarios = COACH_SCENARIOS.checkins && COACH_SCENARIOS.checkins[phase];
   if (!phaseScenarios) return GENERIC_COACH_FALLBACK;
@@ -1217,12 +1258,8 @@ function Confetti() {
   );
 }
 
-function weeksBetween(dateStr) {
-  const target = new Date(dateStr);
-  const now = new Date();
-  const days = Math.ceil((target - now) / (1000 * 60 * 60 * 24));
-  return Math.max(4, Math.min(12, Math.round(days / 7)));
-}
+// weeksUntil and planForRace live in src/lib/plan.js (tested): under four weeks away is Race ready, otherwise the
+// longest of the 12-, 8- and 4-week plans that fits.
 
 function dateKey(d) {
   return d.toISOString().slice(0, 10);
@@ -1242,7 +1279,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
       const status = feeling === undefined ? "upcoming" : feeling === "Didn't get to it" ? "skipped" : "done";
       const d = sessionDate(programStart, w.n, s.day);
       const eff = status === "upcoming" ? effectiveSession(s, adjustmentMins) : s;
-      sessionsByDate[dateKey(d)] = { status, name: s.name, detail: eff.detail, mins: sessionDurations[key] ?? eff.mins };
+      sessionsByDate[dateKey(d)] = { status, name: s.name, detail: eff.detail || s.child || "", mins: sessionDurations[key] ?? eff.mins };
     });
   });
   const adHocByDate = {};
@@ -1364,6 +1401,11 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
 const monthNavBtn = { background: "none", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, width: 28, height: 28, fontSize: 16, cursor: "pointer", lineHeight: 1 };
 
 const FEELINGS = ["Easier than expected", "About right", "Tougher than expected", "Had to stop early"];
+// A skipped session is logged under this key whatever the button said, so streaks, badges and the calendar agree.
+const SKIPPED = "Didn't get to it";
+// Juniors: the grown-up answers about the child.
+const JUNIOR_FEELINGS = ["Loved it", "Fine", "Found it hard", "Had to stop early"];
+const JUNIOR_SKIPPED_LABEL = "Didn't get to it this week";
 
 const QA_TOPICS = [
   "Bike handling skills",
@@ -1390,26 +1432,33 @@ function loadRiderIndex() {
 const newRiderId = () => Math.random().toString(36).slice(2, 8);
 
 // A complete, empty snapshot for a new rider, so switching to them clears every trace of the previous rider.
+// ageBand is "under14" (Sofa to Singletrack Juniors, with a grown-up) or "14plus" (the adult plans); junior follows it.
+// raceReady marks a 2- or 3-week Race ready block; delayWeeks holds a race plan's start back so it ends in race week.
+const BLANK_PROFILE = { name: "", ageBand: null, junior: false, experience: "none", planType: null, raceId: null, months: null, sessionsPerWeek: 3, chosenDays: ["Tue", "Thu", "Sat"], raceReady: false, delayWeeks: 0 };
 function blankSaved(name) {
-  const days = ["Tue", "Thu", "Sat"];
   return {
-    profile: { name: name || "", experience: "none", planType: null, raceId: null, months: null, sessionsPerWeek: 3, chosenDays: days },
-    weeks: buildProgramme(8, days),
+    profile: { ...BLANK_PROFILE, name: name || "" },
+    weeks: defaultPlan(), planVersion: PLAN_VERSION,
     sessionLog: {}, badges: [], adHocLog: [], notifAsked: false, notifEnabled: false, reminderTime: "17:30", lastFeeling: null,
     programStart: new Date().toISOString(), sessionDurations: {}, activeTimer: null, adjustmentMins: 0, stage: "onboarding",
-    lastActivityAt: null, comebackNudgeShown: false, raceOfferShown: false, savedAt: 0,
+    lastActivityAt: null, comebackNudgeShown: false, raceOfferShown: false, savedAt: 0, continuedFrom: null,
   };
 }
 
 export default function SofaToSingletrack() {
   const [stage, setStage] = useState("welcome");
   const [showSplash, setShowSplash] = useState(true);
-  const [profile, setProfile] = useState({ name: "", experience: "none", planType: null, raceId: null, months: null, sessionsPerWeek: 3, chosenDays: ["Tue", "Thu", "Sat"] });
+  const [profile, setProfile] = useState(BLANK_PROFILE);
   const [step, setStep] = useState(0);
-  const [weeks, setWeeks] = useState(buildProgramme(8, ["Tue", "Thu", "Sat"]));
+  const [weeks, setWeeks] = useState(defaultPlan);
+  const [planVersion, setPlanVersion] = useState(PLAN_VERSION); // which plan tables built `weeks`; saved with them
+  const audioCtxRef = useRef(null); // made in the Start tap so the countdown beep is not silent on iPhone
   const [coachNote, setCoachNote] = useState("");
   const [welcomeNote, setWelcomeNote] = useState("");
   const [programStart, setProgramStart] = useState(new Date());
+  // When this programme is a deliberate carry-on (weeks 8 to 11, start again, the full plan after the race), the
+  // finished programme's programStart (ISO string): the sync rule then knows an empty log is not a stray new plan.
+  const [continuedFrom, setContinuedFrom] = useState(null);
   const [bikeCheckDone, setBikeCheckDone] = useState(false);
   const [fitnessConfirmed, setFitnessConfirmed] = useState(false);
   const [badges, setBadges] = useState([]);
@@ -1514,19 +1563,16 @@ export default function SofaToSingletrack() {
     setCheckinTarget(null);
     setCoachNote("");
     setWelcomeNote("");
-    if (saved.profile) setProfile(saved.profile);
-    if (saved.weeks && saved.weeks.length) {
-      // Rebuild from the canonical PHASES content rather than trusting the
-      // persisted snapshot verbatim — this keeps the rider's exact programme
-      // length and day assignments (fixed at signup) but always picks up
-      // any session-copy/effort/video updates shipped since they started,
-      // instead of freezing them on whatever content existed at signup time.
-      const chosenDays = (saved.profile && saved.profile.chosenDays) || saved.weeks[0].sessions.map((s) => s.day);
-      // Week 1 is cut to the days on or after the start, exactly as it was when the programme was built (keys depend on it).
-      setWeeks(trimWeekOne(buildProgramme(saved.weeks.length, chosenDays), saved.programStart ? new Date(saved.programStart) : new Date()));
-    } else if (saved.weeks) {
-      setWeeks(saved.weeks);
-    }
+    // The confirm step's ticks belong to one rider's one sign-up, never to the next rider or the next programme.
+    setBikeCheckDone(false);
+    setFitnessConfirmed(false);
+    if (saved.profile) setProfile({ ...BLANK_PROFILE, ...saved.profile, junior: !!saved.profile.junior });
+    // A saved programme's weeks are kept exactly as saved, whatever version built them. A programme saved before
+    // planVersion 2 used session copy that no longer exists in the plan tables, so rebuilding it would scramble its
+    // log; its old Easy / Moderate / Hard efforts show as Chatting / Breathing / Can't talk through the same keys.
+    const savedWeeks = weeksFromSaved(saved);
+    if (savedWeeks) setWeeks(savedWeeks);
+    setPlanVersion(Number.isInteger(saved.planVersion) ? saved.planVersion : 1);
     if (saved.sessionLog) setSessionLog(saved.sessionLog);
     if (saved.badges) setBadges(saved.badges);
     if (Array.isArray(saved.adHocLog)) setAdHocLog(saved.adHocLog);
@@ -1535,6 +1581,7 @@ export default function SofaToSingletrack() {
     if (saved.reminderTime) setReminderTime(saved.reminderTime);
     if (typeof saved.lastFeeling !== "undefined") setLastFeeling(saved.lastFeeling);
     if (saved.programStart) setProgramStart(new Date(saved.programStart));
+    setContinuedFrom(typeof saved.continuedFrom === "string" && saved.continuedFrom ? saved.continuedFrom : null);
     if (saved.sessionDurations) setSessionDurations(saved.sessionDurations);
     setActiveTimer(saved.activeTimer || null);
     if (typeof saved.adjustmentMins === "number") setAdjustmentMins(saved.adjustmentMins);
@@ -1574,7 +1621,7 @@ export default function SofaToSingletrack() {
     setLoaded(true);
   }, []);
 
-  const buildPayload = () => ({ profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), savedAt: modifiedAtRef.current, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown });
+  const buildPayload = () => ({ profile, weeks, planVersion, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), continuedFrom, savedAt: modifiedAtRef.current, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown });
 
   useEffect(() => {
     if (!loaded) return;
@@ -1585,7 +1632,7 @@ export default function SofaToSingletrack() {
     } catch (e) {
       // storage unavailable (private browsing, quota) — progress just won't persist
     }
-  }, [loaded, riderIndex.active, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
+  }, [loaded, riderIndex.active, profile, weeks, planVersion, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
 
   // The rider's name on the switcher follows what they type in setup.
   useEffect(() => {
@@ -1749,7 +1796,7 @@ export default function SofaToSingletrack() {
     const t = setTimeout(() => pushRider(riderIndex.active, profile.name, buildPayload()), 2000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, syncReady, account, riderIndex.active, profile, weeks, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
+  }, [loaded, syncReady, account, riderIndex.active, profile, weeks, planVersion, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
 
   // A signed-in rider doesn't have to type their name again.
   useEffect(() => {
@@ -1772,10 +1819,17 @@ export default function SofaToSingletrack() {
     const remaining = activeTimer.targetMins * 60000 - (nowTick - activeTimer.startedAt);
     if (remaining <= 0) {
       setTimerAlerted(true);
-      playTimerAlertSound();
+      // No countdown beep on a Junior session: on a 15-minute ride it sounds like a telling-off. The voice cues stay.
+      if (!activeTimer.junior) playTimerAlertSound(audioCtxRef.current);
       if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
     }
   }, [nowTick, activeTimer, timerAlerted]);
+
+  const junior = !!profile.junior;
+
+  // A Junior session's timer starts as a countdown from the session's minutes (15 to 35); there is no beep at the end.
+  // An adult's starts counting up. Set on every rider change, so a Junior's countdown never sticks to the next adult.
+  useEffect(() => { setTimerMode(junior ? "down" : "up"); }, [junior, riderIndex.active]);
 
   const allSessions = weeks.flatMap((w) =>
     w.sessions.map((s, i) => ({ key: `${w.n}-${i}`, weekN: w.n, idx: i, session: s, weekTitle: w.title }))
@@ -1785,7 +1839,10 @@ export default function SofaToSingletrack() {
   const nextSessionEffective = nextSession ? effectiveSession(nextSession.session, adjustmentMins) : null;
   const upcoming = unlogged.slice(1, 3);
   const currentWeekN = nextSession ? nextSession.weekN : weeks[weeks.length - 1].n;
+  const currentWeek = weeks.find((w) => w.n === currentWeekN) || null;
   const programmeComplete = unlogged.length === 0;
+  // The next round on the calendar, for the Juniors graduation card ("a fun race is next if they want it").
+  const nextRace = races.find((r) => new Date(r.date + "T00:00:00") >= new Date(new Date().setHours(0, 0, 0, 0))) || null;
   const programEndDate = new Date(programStart.getTime() + weeks.length * 7 * 24 * 60 * 60 * 1000);
   const nextRelevantRace = races.find((r) => new Date(r.date) > programEndDate && new Date(r.date) > new Date());
 
@@ -1839,6 +1896,13 @@ export default function SofaToSingletrack() {
   // to run before the next line of code, only before the next render.
   const checkAllBadges = (log, adHoc) => {
     const candidates = [];
+    if (junior) {
+      // Juniors: each game ticked by the grown-up collects its own named badge, nothing else.
+      allSessions.forEach((s) => { if (log[s.key] && log[s.key] !== SKIPPED && s.session.badge) candidates.push(s.session.badge); });
+      const justAwardedJ = candidates.filter((label) => !badges.includes(label));
+      if (justAwardedJ.length > 0) setBadges((prev) => [...prev, ...justAwardedJ.filter((l) => !prev.includes(l))]);
+      return justAwardedJ;
+    }
     weeks.forEach((w) => {
       const allLogged = w.sessions.every((_, i) => `${w.n}-${i}` in log);
       if (!allLogged) return;
@@ -1877,38 +1941,126 @@ export default function SofaToSingletrack() {
     return justAwarded;
   };
 
-  const chooseRace = (race) => {
-    const totalWeeks = weeksBetween(race.date);
-    const p = { ...profile, planType: "race", raceId: race.id };
+  // The onboarding steps, by name. Juniors is shorter: no experience, plan type or timescale (fixed at 8 weeks, 2 sessions).
+  const stepList = profile.junior
+    ? ["name", "age", "days", "confirm"]
+    : ["name", "age", "experience", "daysPerWeek", "days", "planType", profile.planType === "race" ? "race" : "months", "confirm"];
+  const stepName = stepList[Math.min(step, stepList.length - 1)];
+  const goToStep = (name) => setStep(Math.max(0, stepList.indexOf(name)));
+
+  const chooseAge = (ageBand) => {
+    const isJunior = ageBand === "under14";
+    const p = { ...profile, ageBand, junior: isJunior, sessionsPerWeek: isJunior ? 2 : profile.sessionsPerWeek, chosenDays: isJunior ? ["Sat", "Sun"] : profile.chosenDays };
+    // A Junior has no race plan: clear anything an earlier adult pass through setup left behind, so no Race ready
+    // block, delayed start or race-week note can follow the child onto the dashboard.
+    if (isJunior) Object.assign(p, { planType: null, raceId: null, raceReady: false, raceReadyWeeks: null, delayWeeks: 0, months: null, continuation: null });
     setProfile(p);
-    setWeeks(buildProgramme(totalWeeks, p.chosenDays));
+    setWeeks(isJunior ? buildJuniorPlan({ chosenDays: p.chosenDays }) : defaultPlan());
+    setStep(step + 1);
+  };
+
+  const chooseRace = (race) => {
+    const choice = planForRace(weeksUntil(race.date));
+    if (choice.kind === "raceReady") {
+      const p = { ...profile, planType: "race", raceId: race.id, raceReady: true, raceReadyWeeks: choice.weeksToRace, delayWeeks: 0, months: null };
+      setProfile(p);
+      setWeeks(buildRaceReadyPlan({ weeksToRace: choice.weeksToRace, daysPerWeek: p.sessionsPerWeek, chosenDays: p.chosenDays }));
+    } else {
+      const p = { ...profile, planType: "race", raceId: race.id, raceReady: false, raceReadyWeeks: null, delayWeeks: choice.delayWeeks, months: null };
+      setProfile(p);
+      setWeeks(buildAdultPlan({ lengthWeeks: choice.lengthWeeks, daysPerWeek: p.sessionsPerWeek, chosenDays: p.chosenDays, planType: "race" }));
+    }
     setStep(step + 1);
   };
 
   const chooseMonths = (months) => {
-    const p = { ...profile, planType: "months", months };
+    const p = { ...profile, planType: "months", months, raceId: null, raceReady: false, raceReadyWeeks: null, delayWeeks: 0 };
     setProfile(p);
-    setWeeks(buildProgramme(months * 4, p.chosenDays));
+    setWeeks(buildAdultPlan({ lengthWeeks: months * 4, daysPerWeek: p.sessionsPerWeek, chosenDays: p.chosenDays, planType: "months" }));
     setStep(step + 1);
   };
 
-  const startProgramme = () => {
+  // Puts a freshly built set of weeks in place as the rider's programme, starting now (or on a later Monday).
+  const beginProgramme = (builtWeeks, { delayWeeks = 0, carryOn = false } = {}) => {
+    // A carry-on records which programme it follows (the one that is ending now), so an empty log on a device that
+    // has not pushed yet is not mistaken for a stray new plan when it meets the account's finished copy.
+    const previousStart = programStart.toISOString();
     // The programme starts now (not when the app was first opened), and week 1 is this calendar week: the rides whose
-    // day has already gone are dropped from it. If none are left this week, it starts next Monday instead.
-    const start = programmeStartFor(new Date(), weeks[0]);
-    const plan = trimWeekOne(weeks, start);
+    // day has already gone are dropped from it. If none are left this week, it starts next Monday instead. A race plan
+    // whose race is further off than the plan is long starts on a later Monday, so its last week is race week.
+    let start;
+    if (delayWeeks > 0) {
+      start = mondayOf(new Date());
+      start.setDate(start.getDate() + 7 * delayWeeks);
+    } else {
+      start = programmeStartFor(new Date(), builtWeeks[0]);
+    }
+    const plan = trimWeekOne(builtWeeks, start);
     setProgramStart(start);
+    setContinuedFrom(carryOn ? previousStart : null);
     setWeeks(plan);
+    setPlanVersion(PLAN_VERSION);
+    setSessionLog({});
+    setSessionDurations({});
+    setAdHocLog([]);
+    setActiveTimer(null);
+    setTimerAlerted(false);
+    setLastFeeling(null);
+    setAdjustmentMins(0);
+    setCheckinTarget(null);
+    setCoachNote("");
     setStage("dashboard");
     const first = plan[0].sessions[0];
-    const welcomeTemplate = COACH_SCENARIOS.welcome || "Welcome aboard, {name} — your first session, {sessionName}, is a gentle one on purpose.";
+    const welcomeTemplate = (profile.junior && COACH_SCENARIOS.junior && COACH_SCENARIOS.junior.welcome)
+      || COACH_SCENARIOS.welcome || "Welcome aboard, {name} — your first session, {sessionName}, is a gentle one on purpose.";
     setWelcomeNote(fillTemplate(welcomeTemplate, { name: profile.name || "rider", sessionName: first.name }));
+    return plan;
+  };
+
+  const startProgramme = () => {
+    beginProgramme(weeks, { delayWeeks: profile.delayWeeks || 0 });
     // The only place "have you ridden off-road before?" actually feeds into the
     // plan — an already-regular rider starts one difficulty step up rather than
     // at the same baseline as someone brand new, using the same ±5 min lever
     // the feel-based check-ins use later. Deliberately not forking the plan
     // itself, which stays the one canonical schedule for everyone.
-    if (profile.experience === "Ridden regularly, never raced") setAdjustmentMins(ADJUSTMENT_STEP);
+    if (!profile.junior && profile.experience === "Ridden regularly, never raced") setAdjustmentMins(ADJUSTMENT_STEP);
+  };
+
+  // The 8-week finisher carries on with weeks 8 to 11 of the full plan; the Taster finisher with the 8-week plan from
+  // week 5. Badges and the "I did it" record stay; the new programme starts with a clean log.
+  const carryOn = ({ lengthWeeks, fromWeek, toWeek }) => {
+    // Always the no-race version: any race the rider picked has been and gone by the time this is offered.
+    const more = buildContinuationPlan({ lengthWeeks, fromWeek, toWeek, daysPerWeek: profile.sessionsPerWeek, chosenDays: profile.chosenDays, planType: "months" });
+    setProfile({ ...profile, planType: "months", raceId: null, raceReady: false, raceReadyWeeks: null, delayWeeks: 0, months: null, continuation: { lengthWeeks, fromWeek, toWeek } });
+    beginProgramme(more, { carryOn: true });
+    showToast(`Carrying on with weeks ${fromWeek} to ${toWeek}.`);
+  };
+
+  // After a Race ready block: "the full plan starts after the race". The 12-week plan, no race, on the same days.
+  const startFullPlan = () => {
+    const full = buildAdultPlan({ lengthWeeks: 12, daysPerWeek: profile.sessionsPerWeek, chosenDays: profile.chosenDays, planType: "months" });
+    setProfile({ ...profile, planType: "months", raceId: null, raceReady: false, raceReadyWeeks: null, delayWeeks: 0, months: 3, continuation: null });
+    beginProgramme(full, { carryOn: true });
+    showToast("The full 12-week plan starts now.");
+  };
+
+  // What to offer a rider who has finished: the Taster's next step is the 8-week plan from week 5; the 8-week finisher
+  // (or a Taster finisher who carried on) gets weeks 8 to 11 of the full plan; a Race ready finisher gets the full plan.
+  const carryOnOffer = (() => {
+    if (profile.junior || !programmeComplete) return null;
+    if (profile.raceReady) return { kind: "full" };
+    const c = profile.continuation;
+    if (c) return c.lengthWeeks === 8 ? { kind: "weeks", lengthWeeks: 12, fromWeek: 8, toWeek: 11 } : null;
+    if (weeks.length === 4) return { kind: "weeks", lengthWeeks: 8, fromWeek: 5, toWeek: 8 };
+    if (weeks.length === 8) return { kind: "weeks", lengthWeeks: 12, fromWeek: 8, toWeek: 11 };
+    return null;
+  })();
+
+  // Juniors graduation: the whole plan can be done again at the next age up.
+  const juniorAgain = () => {
+    beginProgramme(buildJuniorPlan({ chosenDays: profile.chosenDays }), { carryOn: true });
+    showToast("Same games, next age up. Badges already earned stay in the trophy case.");
   };
 
   const openCheckin = (target) => {
@@ -1928,8 +2080,10 @@ export default function SofaToSingletrack() {
     setTimeout(() => setShowConfetti(false), 2600);
   };
 
-  const trophyToastText = (justAwarded) =>
-    justAwarded.length === 1 ? `🏆 Trophy unlocked: ${justAwarded[0]}` : `🏆 ${justAwarded.length} new trophies unlocked!`;
+  const trophyToastText = (justAwarded) => {
+    if (junior) return justAwarded.length === 1 ? `🏅 Badge collected: ${justAwarded[0]}` : `🏅 ${justAwarded.length} badges collected!`;
+    return justAwarded.length === 1 ? `🏆 Trophy unlocked: ${justAwarded[0]}` : `🏆 ${justAwarded.length} new trophies unlocked!`;
+  };
 
   const celebrateTrophies = (justAwarded) => {
     showToast(trophyToastText(justAwarded), "trophy");
@@ -1947,6 +2101,7 @@ export default function SofaToSingletrack() {
   const ADJUSTMENT_MAX = 15;
 
   const applyFeelingAdjustment = (feeling) => {
+    if (junior) return null; // Juniors sessions are never lengthened or shortened
     if (feeling === "About right") {
       setAdjustmentMins(0);
       return null;
@@ -1977,7 +2132,7 @@ export default function SofaToSingletrack() {
     // without the timer — a real timer reading (the one just stopped above, or one
     // already in sessionDurations) takes priority over the planned figure.
     if (feeling !== "Didn't get to it" && timedMins == null && !(target.key in sessionDurations)) {
-      const effectiveMins = Math.max(5, target.session.mins + adjustmentMins);
+      const effectiveMins = effectiveSession(target.session, adjustmentMins).mins;
       setSessionDurations((prev) => ({ ...prev, [target.key]: effectiveMins }));
     }
     if (feeling !== "Didn't get to it") setLastActivityAt(Date.now());
@@ -1993,7 +2148,7 @@ export default function SofaToSingletrack() {
     }
 
     if (!navigate) return;
-    setCoachNote(getCoachNote(target, feeling));
+    setCoachNote(getCoachNote(target, feeling, junior));
   };
 
   const submitCheckin = (feeling) => checkinTarget && logSession(checkinTarget, feeling, { navigate: true });
@@ -2003,8 +2158,11 @@ export default function SofaToSingletrack() {
   };
 
   const startRideTimer = (target, targetMins) => {
+    // The AudioContext is created (or resumed) here, inside the tap, and reused for the countdown beep: one made later,
+    // when the timer runs out, is silent on iPhone. Juniors sessions have no beep, so no context is needed.
+    if (!junior && timerMode === "down") audioCtxRef.current = getAudioContext(audioCtxRef.current);
     if (voiceOn) speak(`Starting your ${targetMins} minute ride.`);
-    setActiveTimer({ key: target.key, startedAt: Date.now(), mode: timerMode, targetMins });
+    setActiveTimer({ key: target.key, startedAt: Date.now(), mode: timerMode, targetMins, junior });
     setTimerAlerted(false);
   };
   const cancelRideTimer = () => { setActiveTimer(null); setTimerAlerted(false); };
@@ -2110,7 +2268,7 @@ export default function SofaToSingletrack() {
       ctx.fillStyle = "#F4F3EF";
     }
     ctx.font = "700 50px Oswald, sans-serif";
-    ctx.fillText("I'M A REGULAR RIDER NOW", 540, 560);
+    ctx.fillText(junior ? "SOFA TO SINGLETRACK JUNIOR" : "I'M A REGULAR RIDER NOW", 540, 560);
 
     const stats = [
       { label: "WEEKS", value: String(weeks.length) },
@@ -2169,8 +2327,8 @@ export default function SofaToSingletrack() {
 
   const openAdHocForm = () => {
     setAdHocDate(dateKey(new Date()));
-    setAdHocMins("30");
-    setAdHocFeeling("About right");
+    setAdHocMins(junior ? "15" : "30");
+    setAdHocFeeling(junior ? "Fine" : "About right");
     setAdHocFormOpen(true);
   };
 
@@ -2237,6 +2395,8 @@ export default function SofaToSingletrack() {
     flushCurrentRider();
     const id = newRiderId();
     applySaved(blankSaved(clean));
+    setBikeCheckDone(false);
+    setFitnessConfirmed(false);
     setStep(0);
     persistIndex({ active: id, riders: [...riderIndex.riders, { id, name: clean }] });
     return null;
@@ -2265,6 +2425,7 @@ export default function SofaToSingletrack() {
   const selectedRace = races.find((r) => r.id === profile.raceId);
 
   const adjustTag = (feeling) => {
+    if (junior) return null; // Juniors sessions are never adjusted (applyFeelingAdjustment returns null for them)
     if (feeling === "Tougher than expected" || feeling === "Had to stop early") return "Take it easier — adjusted after your last session";
     if (feeling === "Easier than expected") return "Pushed a little more — adjusted after your last session";
     return null;
@@ -2318,16 +2479,17 @@ export default function SofaToSingletrack() {
           </p>
           <p style={{ fontSize: 15, lineHeight: 1.5, color: "#B9BDB8", marginBottom: 28 }}>
             Built by MTB East, for off-road riding specifically — not a general cycling app. Real local trails, a real local club.
+            Under-14s get Sofa to Singletrack Juniors: eight weeks of games, with a grown-up.
           </p>
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 28, border: "1px solid #2b2b2b" }}>
-            <ContourProgress weeks={buildProgramme(8, ["Tue", "Thu", "Sat"])} currentWeek={1} />
+            <ContourProgress weeks={defaultPlan()} currentWeek={1} />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: "#B9BDB8", marginTop: 4 }}>
               <span>Week 1</span><span>Riding regularly</span>
             </div>
           </div>
           <GpNote />
           <TextSizeControl value={textSize} onChange={changeTextSize} />
-          <button onClick={() => setStage("onboarding")} style={navBtn}>Start your programme</button>
+          <button onClick={() => { setBikeCheckDone(false); setFitnessConfirmed(false); setStage("onboarding"); }} style={navBtn}>Start your programme</button>
           <InstallPrompt deferredPrompt={deferredPrompt} onInstall={handleInstallClick} isIOS={isIOS} isStandalone={isStandalone} />
           <p style={{ fontSize: 15, color: "#868A85", lineHeight: 1.5, marginTop: 18 }}>
             Training and fuelling notes are general guidance from a fixed content library, not personalised medical, dietetic or coaching advice.
@@ -2345,38 +2507,50 @@ export default function SofaToSingletrack() {
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px" }}>
           <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 20 }}>GET STARTED</div>
 
-          {step === 0 && (
+          {stepName === "name" && (
             <div>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>What should we call you?</label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>{riderIndex.active === "main" ? "What should we call you?" : "What should we call them?"}</label>
               <input ref={nameRef} value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} placeholder="First name" style={inputStyle} />
               <button onClick={() => setStep(1)} style={navBtn} disabled={!profile.name.trim()}>Next</button>
             </div>
           )}
 
-          {step === 1 && (
+          {stepName === "age" && (
+            <div>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>How old is the rider?</label>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>
+                Under-14s get <strong>Sofa to Singletrack Juniors</strong>: about 6 to 12, eight weeks of games, with a grown-up. {JUNIOR_INTRO.ages}
+              </p>
+              <button onClick={() => chooseAge("under14")} style={{ ...choiceBtn, borderColor: profile.ageBand === "under14" ? "#E8792B" : "#2b2b2b" }}>Junior (6 to 12, rides with a grown-up)</button>
+              <button onClick={() => chooseAge("14plus")} style={{ ...choiceBtn, borderColor: profile.ageBand === "14plus" ? "#E8792B" : "#2b2b2b" }}>14 and over</button>
+              <button onClick={() => goToStep("name")} style={backBtn}>Back</button>
+            </div>
+          )}
+
+          {stepName === "experience" && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>Have you ridden off-road before?</label>
               {["Never ridden a bike off-road", "Ridden trails casually", "Ridden regularly, never raced"].map((opt) => (
-                <button key={opt} onClick={() => { setProfile({ ...profile, experience: opt }); setStep(2); }} style={{ ...choiceBtn, borderColor: profile.experience === opt ? "#E8792B" : "#2b2b2b" }}>{opt}</button>
+                <button key={opt} onClick={() => { setProfile({ ...profile, experience: opt }); goToStep("daysPerWeek"); }} style={{ ...choiceBtn, borderColor: profile.experience === opt ? "#E8792B" : "#2b2b2b" }}>{opt}</button>
               ))}
-              <button onClick={() => setStep(0)} style={backBtn}>Back</button>
+              <button onClick={() => goToStep("age")} style={backBtn}>Back</button>
             </div>
           )}
 
-          {step === 2 && (
+          {stepName === "daysPerWeek" && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>How many days a week can you ride?</label>
-              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either works — pick whatever actually fits your week.</p>
-              <button onClick={() => { setSessionsPerWeek(3); setStep(3); }} style={{ ...choiceBtn, borderColor: profile.sessionsPerWeek === 3 ? "#E8792B" : "#2b2b2b" }}>3 days a week (recommended)</button>
-              <button onClick={() => { setSessionsPerWeek(2); setStep(3); }} style={{ ...choiceBtn, borderColor: profile.sessionsPerWeek === 2 ? "#E8792B" : "#2b2b2b" }}>2 days a week — e.g. weekends only</button>
-              <button onClick={() => setStep(1)} style={backBtn}>Back</button>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either works — pick whatever actually fits your week. Three days is Skills, Steady and The long one; two days folds the skill into the long ride, so nothing is dropped.</p>
+              <button onClick={() => { setSessionsPerWeek(3); goToStep("days"); }} style={{ ...choiceBtn, borderColor: profile.sessionsPerWeek === 3 ? "#E8792B" : "#2b2b2b" }}>3 days a week (recommended)</button>
+              <button onClick={() => { setSessionsPerWeek(2); goToStep("days"); }} style={{ ...choiceBtn, borderColor: profile.sessionsPerWeek === 2 ? "#E8792B" : "#2b2b2b" }}>2 days a week — e.g. weekends only</button>
+              <button onClick={() => goToStep("experience")} style={backBtn}>Back</button>
             </div>
           )}
 
-          {step === 3 && (
+          {stepName === "days" && (
             <div>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Which {profile.sessionsPerWeek} days work best?</label>
-              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Pick exactly {profile.sessionsPerWeek} — tap to select or deselect.</p>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>{profile.junior ? "Which two days work best?" : `Which ${profile.sessionsPerWeek} days work best?`}</label>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Pick exactly {profile.sessionsPerWeek} — tap to select or deselect.{profile.junior ? " Two sessions a week, 15 to 35 minutes each." : ""}</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
                 {WEEKDAYS.map((day) => {
                   const selected = profile.chosenDays.includes(day);
@@ -2389,79 +2563,118 @@ export default function SofaToSingletrack() {
                   );
                 })}
               </div>
-              <button onClick={() => setStep(4)} style={navBtn} disabled={profile.chosenDays.length !== profile.sessionsPerWeek}>Next</button>
-              <button onClick={() => setStep(2)} style={backBtn}>Back</button>
+              <button onClick={() => { if (profile.junior) setWeeks(buildJuniorPlan({ chosenDays: profile.chosenDays })); goToStep(profile.junior ? "confirm" : "planType"); }} style={navBtn} disabled={profile.chosenDays.length !== profile.sessionsPerWeek}>Next</button>
+              <button onClick={() => goToStep(profile.junior ? "age" : "daysPerWeek")} style={backBtn}>Back</button>
             </div>
           )}
 
-          {step === 4 && (
+          {stepName === "planType" && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>How do you want to plan it?</label>
               <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either way, the goal is the same — riding regularly. Racing is just an optional bonus if you fancy it.</p>
-              <button onClick={() => setStep(5)} style={{ ...choiceBtn, borderColor: profile.planType === "race" ? "#E8792B" : "#2b2b2b" }}>I'd like the option of a race at the end</button>
-              <button onClick={() => setStep(6)} style={{ ...choiceBtn, borderColor: profile.planType === "months" ? "#E8792B" : "#2b2b2b" }}>No pressure — just build a riding habit</button>
-              <button onClick={() => setStep(3)} style={backBtn}>Back</button>
+              <button onClick={() => { setProfile({ ...profile, planType: "race" }); setStep(step + 1); }} style={{ ...choiceBtn, borderColor: profile.planType === "race" ? "#E8792B" : "#2b2b2b" }}>I'd like the option of a race at the end</button>
+              <button onClick={() => { setProfile({ ...profile, planType: "months" }); setStep(step + 1); }} style={{ ...choiceBtn, borderColor: profile.planType === "months" ? "#E8792B" : "#2b2b2b" }}>No pressure — just build a riding habit</button>
+              <button onClick={() => goToStep("days")} style={backBtn}>Back</button>
             </div>
           )}
 
-          {step === 5 && (
+          {stepName === "race" && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Choose your target round</label>
-              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>The 2027 League calendar. Pick the round you'd like to aim for. Racing is entirely optional.</p>
-              {races.map((race) => (
-                <button key={race.id} onClick={() => chooseRace(race)} style={{ ...choiceBtn, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span><strong>{race.name}</strong> — {race.venue}</span>
-                  <span style={{ color: "#B9BDB8", fontSize: 15 }}>{new Date(race.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
-                </button>
-              ))}
-              <button onClick={() => setStep(4)} style={backBtn}>Back</button>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>The 2027 League calendar. Pick the round you'd like to aim for. Racing is entirely optional. Twelve weeks or more away gets the full plan, eight the 8-week plan, four the 4-week Taster; under four weeks is a short Race ready block.</p>
+              {(() => {
+                // Only rounds from tomorrow on: a block cannot be built for a race that is today.
+                const future = races.filter((race) => new Date(race.date + "T00:00:00") > new Date(new Date().setHours(0, 0, 0, 0)));
+                if (future.length === 0) {
+                  return (
+                    <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 14, border: "1px solid #2b2b2b" }}>
+                      <p style={{ margin: "0 0 12px", fontSize: 15, lineHeight: 1.5 }}>No rounds on the calendar yet. Pick a timescale instead; racing can come later.</p>
+                      <button onClick={() => setProfile({ ...profile, planType: "months", raceId: null, raceReady: false, raceReadyWeeks: null, delayWeeks: 0 })} style={navBtn}>Choose a timescale</button>
+                    </div>
+                  );
+                }
+                return future.map((race) => {
+                  const away = weeksUntil(race.date);
+                  return (
+                    <button key={race.id} onClick={() => chooseRace(race)} style={{ ...choiceBtn, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                      <span><strong>{race.name}</strong> — {race.venue}</span>
+                      <span style={{ color: "#B9BDB8", fontSize: 15, textAlign: "right", flexShrink: 0 }}>{new Date(race.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}<br /><span style={{ fontSize: 13 }}>{away} week{away === 1 ? "" : "s"} away</span></span>
+                    </button>
+                  );
+                });
+              })()}
+              <button onClick={() => goToStep("planType")} style={backBtn}>Back</button>
             </div>
           )}
 
-          {step === 6 && (
+          {stepName === "months" && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>Choose a timescale</label>
-              {[1, 2, 3].map((m) => (
-                <button key={m} onClick={() => chooseMonths(m)} style={choiceBtn}>{m} month{m > 1 ? "s" : ""} ({m * 4} weeks)</button>
+              {[[1, "the 4-week Taster"], [2, "the 8-week plan"], [3, "the full 12-week plan"]].map(([m, what]) => (
+                <button key={m} onClick={() => chooseMonths(m)} style={choiceBtn}>{m} month{m > 1 ? "s" : ""} ({m * 4} weeks): {what}</button>
               ))}
-              <button onClick={() => setStep(4)} style={backBtn}>Back</button>
+              <button onClick={() => goToStep("planType")} style={backBtn}>Back</button>
             </div>
           )}
 
-          {step === 7 && (
+          {stepName === "confirm" && (
             <div>
               <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Your programme</div>
-                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>
-                  {weeks.length} weeks, {profile.sessionsPerWeek} sessions a week ({profile.chosenDays.join("/")}){profile.planType === "race" && selectedRace ? <> — with the option to race at <strong>{selectedRace.name}</strong>, {selectedRace.venue}</> : <> — no race pressure, just building the habit</>}.
-                </p>
-                <p style={{ margin: "10px 0 0", fontSize: 14, color: "#B9BDB8", lineHeight: 1.5 }}>
-                  Every session works just as well outdoors on the trail or indoors on a turbo trainer / gym bike — same time, same effort, whichever suits you that day.
-                </p>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{profile.junior ? "Sofa to Singletrack Juniors" : profile.raceReady ? "Race ready" : "Your programme"}</div>
+                {profile.junior ? (
+                  <>
+                    <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>{JUNIOR_INTRO.what}</p>
+                    <p style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.5 }}>{JUNIOR_INTRO.helpers}</p>
+                    <p style={{ margin: "10px 0 0", fontSize: 14, color: "#B9BDB8", lineHeight: 1.5 }}>Sessions on {profile.chosenDays.join(" and ")}. Each one shows the game, where to play it, what the child does, what the grown-up does, and the badge.</p>
+                  </>
+                ) : profile.raceReady && selectedRace ? (
+                  <>
+                    <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>
+                      <strong>{selectedRace.name}</strong>, {selectedRace.venue}, is under four weeks away, so this is a {weeks.length}-week Race ready block, not a full plan: {weeks.length === 1 ? "the taper week, with six practice starts added" : "the M-check, a steady ride and a course recon, with six practice starts, then the taper week"}.
+                    </p>
+                    <p style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.5, color: "#E8792B", fontWeight: 600 }}>{RACE_READY_TEXT}</p>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>
+                      {weeks.length} weeks, {profile.sessionsPerWeek} sessions a week ({profile.chosenDays.join("/")}){profile.planType === "race" && selectedRace ? <> — with the option to race at <strong>{selectedRace.name}</strong>, {selectedRace.venue}</> : <> — no race pressure, just building the habit</>}.
+                    </p>
+                    {profile.delayWeeks > 0 && selectedRace && (
+                      <p style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.5, color: "#E8792B" }}>
+                        {selectedRace.name} is {weeksUntil(selectedRace.date)} weeks away and this plan is {weeks.length} weeks long, so it starts on Monday {(() => { const d = mondayOf(new Date()); d.setDate(d.getDate() + 7 * profile.delayWeeks); return d.toLocaleDateString("en-GB", { day: "numeric", month: "long" }); })()} and its last week is race week. Until then, any ride you do can be logged as an extra ride.
+                      </p>
+                    )}
+                    <p style={{ margin: "10px 0 0", fontSize: 14, color: "#B9BDB8", lineHeight: 1.5 }}>
+                      Every session works just as well outdoors on the trail or indoors on a turbo trainer / gym bike — same time, same effort, whichever suits you that day.
+                    </p>
+                  </>
+                )}
               </div>
 
               <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 14, border: "1px solid #2b2b2b" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Before your first ride</div>
-                <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5, color: "#B9BDB8" }}>A two-minute check of brakes, tyres and quick releases before you head out. Tap each one to see what to look for.</p>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{profile.junior ? "Before the first game" : "Before your first ride"}</div>
+                <p style={{ margin: "0 0 10px", fontSize: 15, lineHeight: 1.5, color: "#B9BDB8" }}>{profile.junior ? "A two-minute check of the child's bike, done together: brakes, tyres and quick releases. Tap each one to see what to look for." : "A two-minute check of brakes, tyres and quick releases before you head out. Tap each one to see what to look for."}</p>
                 <BikeSetupCheck bordered={false} />
                 <button onClick={() => setBikeCheckDone(true)} style={{ width: "100%", padding: "10px 0", background: bikeCheckDone ? "#0F5F59" : "#0d0d0d", color: bikeCheckDone ? "#fff" : "#F4F3EF", border: "1px solid " + (bikeCheckDone ? "#0F5F59" : "#2b2b2b"), borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
-                  {bikeCheckDone ? "✓ Bike checked" : "I've checked my bike"}
+                  {bikeCheckDone ? "✓ Bike checked" : profile.junior ? "Bike check done with a grown-up" : "I've checked my bike"}
                 </button>
               </div>
 
               <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Before you start</div>
-                <GpNote />
+                <GpNote forGrownUp={profile.junior} />
                 <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
                   <input type="checkbox" checked={fitnessConfirmed} onChange={(e) => setFitnessConfirmed(e.target.checked)} style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }} />
                   <span style={{ fontSize: 15, lineHeight: 1.5, color: "#F4F3EF" }}>
-                    I've read the health note. I'm well enough to take part in this kind of activity, and if I'm unsure I'll check with my GP before starting.
+                    {profile.junior
+                      ? "I'm the grown-up riding with them. I've read the health note, they're well enough to take part in this kind of activity, and if I'm unsure I'll check with their GP before starting."
+                      : "I've read the health note. I'm well enough to take part in this kind of activity, and if I'm unsure I'll check with my GP before starting."}
                   </span>
                 </label>
               </div>
 
-              <button onClick={startProgramme} style={navBtn} disabled={!bikeCheckDone || !fitnessConfirmed}>Build my programme</button>
-              <button onClick={() => setStep(profile.planType === "race" ? 5 : 6)} style={backBtn}>Back</button>
+              <button onClick={startProgramme} style={navBtn} disabled={!bikeCheckDone || !fitnessConfirmed}>{profile.junior ? "Build their programme" : "Build my programme"}</button>
+              <button onClick={() => goToStep(profile.junior ? "days" : profile.planType === "race" ? "race" : "months")} style={backBtn}>Back</button>
             </div>
           )}
         </div>
@@ -2482,11 +2695,11 @@ export default function SofaToSingletrack() {
           )}
 
           {!(account && !account.signedIn && signInCardHidden) && <AccountCard account={account} onHide={() => { setSignInCardHidden(true); try { localStorage.setItem("sofaToSingletrack:hideSignInCard", "1"); } catch (e) { /* storage unavailable */ } }} />}
-          {raceWeek && <RaceWeekCard entry={raceWeek} />}
-          {!raceWeek && selectedRace && raceWeekNote(daysUntil(selectedRace.date)) && new Date(selectedRace.date + "T00:00:00") >= new Date(new Date().setHours(0, 0, 0, 0)) && (
-            <RaceCoachNote race={selectedRace} note={raceWeekNote(daysUntil(selectedRace.date))} />
+          {raceWeek && <RaceWeekCard entry={raceWeek} junior={junior} />}
+          {!raceWeek && selectedRace && raceWeekNote(daysUntil(selectedRace.date), junior) && new Date(selectedRace.date + "T00:00:00") >= new Date(new Date().setHours(0, 0, 0, 0)) && (
+            <RaceCoachNote race={selectedRace} note={raceWeekNote(daysUntil(selectedRace.date), junior)} />
           )}
-          {showRaceOffer && nextRelevantRace && !raceWeek && !programmeComplete && (
+          {showRaceOffer && nextRelevantRace && !raceWeek && !programmeComplete && !junior && (
             <RaceAdvert race={nextRelevantRace} funPrice={funPrice} onDismiss={() => setShowRaceOffer(false)} />
           )}
 
@@ -2500,9 +2713,9 @@ export default function SofaToSingletrack() {
                   <div className="display" style={{ fontSize: 20, color: "#F4F3EF", lineHeight: 1.1 }}>{sessionDate(programStart, nextSession.weekN, nextSession.session.day).getDate()}</div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Next up</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Next up{roleLabel(nextSession.session) ? ` · ${roleLabel(nextSession.session)}` : ""}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">{SESSION_ICONS[nextSession.session.name] || "🚵"}</span>
+                    <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">{iconFor(nextSession.session.name)}</span>
                     <div style={{ fontSize: 20, fontWeight: 700 }}>{nextSession.session.name}</div>
                     {MICRO_EXPLAINERS[nextSession.session.name] && (
                       <button onClick={() => setExplainerOpen((v) => !v)} aria-label="Why this session?" style={{ width: 20, height: 20, borderRadius: "50%", background: "none", border: "1px solid #B9BDB8", color: "#B9BDB8", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: "18px", padding: 0, flexShrink: 0 }}>?</button>
@@ -2510,8 +2723,9 @@ export default function SofaToSingletrack() {
                   </div>
                 </div>
               </div>
-              <div style={{ marginBottom: 10 }}>
-                <EffortDots effort={nextSession.session.effort} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                <EffortDots effort={nextSession.session.effort} note={sameNote(nextSession.session.effortNote, nextSessionEffective.detail) ? null : nextSession.session.effortNote} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#B9BDB8" }}>{nextSession.session.minsText || `${nextSessionEffective.mins} min`}</span>
               </div>
               {explainerOpen && MICRO_EXPLAINERS[nextSession.session.name] && (
                 <p style={{ fontSize: 14, color: "#B9BDB8", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "0 0 10px", lineHeight: 1.4 }}>
@@ -2523,7 +2737,12 @@ export default function SofaToSingletrack() {
                   {adjustTag(lastFeeling)}
                 </div>
               )}
-              <GlossaryText key={nextSession.key} text={nextSessionEffective.detail} />
+              {junior ? (
+                <JuniorGame key={nextSession.key} session={nextSession.session} />
+              ) : nextSessionEffective.detail ? (
+                <GlossaryText key={nextSession.key} text={nextSessionEffective.detail} />
+              ) : null}
+              <DoneWhen session={nextSession.session} />
               {nextSessionEffective.video ? (
                 <a href={`https://www.youtube.com/watch?v=${nextSessionEffective.video}`} target="_blank" rel="noopener noreferrer"
                   style={{ display: "flex", alignItems: "center", gap: 10, background: "#0d0d0d", borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: "1px solid #2b2b2b", textDecoration: "none" }}>
@@ -2568,7 +2787,7 @@ export default function SofaToSingletrack() {
                           : overtime ? `+${formatElapsed(Math.abs(remainingMs))}` : formatElapsed(isDown ? remainingMs : elapsedMs)}
                       </div>
                     </div>
-                    <RideTimerStatus running={running} wakeState={wakeState} voiceOn={voiceOn} onToggleVoice={toggleVoice} />
+                    <RideTimerStatus running={running} wakeState={wakeState} voiceOn={voiceOn} onToggleVoice={toggleVoice} beep={!junior} />
                     {running ? (
                       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                         <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
@@ -2581,7 +2800,7 @@ export default function SofaToSingletrack() {
                 );
               })()}
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => openCheckin(nextSession)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Log this session</button>
+                <button onClick={() => openCheckin(nextSession)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>{junior ? "Ticked by a grown-up" : "Log this session"}</button>
                 <button onClick={() => downloadSessionICS(nextSessionEffective, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>+ Cal</button>
                 <button onClick={() => quickSkip(nextSession)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>Skip</button>
               </div>
@@ -2595,6 +2814,15 @@ export default function SofaToSingletrack() {
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1B8A82", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
               Week {currentWeekN} of {weeks.length}
             </div>
+            {currentWeek && currentWeek.title && (
+              <div style={{ marginBottom: 8 }}>
+                <div className="display" style={{ fontSize: 20, lineHeight: 1.2, color: "#F4F3EF" }}>{currentWeek.title}</div>
+                {currentWeek.focus && <p style={{ margin: "4px 0 0", fontSize: 15, lineHeight: 1.5, color: "#B9BDB8" }}>{currentWeek.focus}</p>}
+              </div>
+            )}
+            {profile.raceReady && !programmeComplete && (
+              <p style={{ margin: "0 0 8px", fontSize: 15, lineHeight: 1.5, color: "#E8792B", fontWeight: 600 }}>{RACE_READY_TEXT}</p>
+            )}
             <p style={{ margin: 0, fontSize: 16, lineHeight: 1.5, color: "#F4F3EF" }}>
               {welcomeNote || `Nice and steady, ${profile.name || "rider"} — every session counts.`}
             </p>
@@ -2625,12 +2853,12 @@ export default function SofaToSingletrack() {
 
             <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Trophy case</div>
             {badges.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 15, color: "#868A85", lineHeight: 1.5 }}>Keep going — your first trophy unlocks after your first week done.</p>
+              <p style={{ margin: 0, fontSize: 15, color: "#868A85", lineHeight: 1.5 }}>{junior ? "The first badge comes with the first game, once a grown-up has ticked it." : "Keep going — your first trophy unlocks after your first week done."}</p>
             ) : (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {badges.map((b) => (
                   <div key={b} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 10, padding: "8px 12px" }}>
-                    <span style={{ fontSize: 16 }}>🏆</span>
+                    <span style={{ fontSize: 16 }}>{JUNIOR_BADGES.includes(b) ? "🏅" : "🏆"}</span>
                     <span style={{ fontSize: 14, fontWeight: 600, color: "#F4F3EF" }}>{b}</span>
                   </div>
                 ))}
@@ -2638,13 +2866,52 @@ export default function SofaToSingletrack() {
             )}
           </div>
 
-          {programmeComplete ? (
+          {programmeComplete && junior ? (
             <div>
               <div style={{ background: "#AE5B20", borderRadius: 12, padding: "20px", textAlign: "center", color: "#fff", marginBottom: 16 }}>
-                <div className="display" style={{ fontSize: 18, marginBottom: 6 }}>YOU'VE GRADUATED{profile.name ? ", " + profile.name.toUpperCase() : ""}</div>
-                <p style={{ margin: 0, fontSize: 16 }}>You're a regular rider now. That's the real win, and racing from here is entirely optional.</p>
+                <div className="display" style={{ fontSize: 18, marginBottom: 6 }}>SOFA TO SINGLETRACK JUNIOR{profile.name ? ": " + profile.name.toUpperCase() : ""}</div>
+                <p style={{ margin: 0, fontSize: 16, lineHeight: 1.5 }}>{(COACH_SCENARIOS.junior && COACH_SCENARIOS.junior.graduation) || "A fun race is next if they want it, and the whole plan can be done again at the next age up."}</p>
+                <button onClick={handleShareFinishCard} style={{ marginTop: 14, background: "#14171A", border: "none", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>📸 Share the badge</button>
+              </div>
+              <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid #2b2b2b" }}>
+                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>A fun race is next, if they want it</div>
+                {nextRace ? (
+                  <p style={{ fontSize: 15, color: "#F4F3EF", margin: "0 0 10px", lineHeight: 1.5 }}>
+                    The next round is <strong>{nextRace.name}</strong>, {nextRace.venue}, on {new Date(nextRace.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}. Under-16s race in their age category, and a fun race means a fun race.
+                  </p>
+                ) : (
+                  <p style={{ fontSize: 15, color: "#B9BDB8", margin: "0 0 10px", lineHeight: 1.5 }}>The next round's date is on the League page.</p>
+                )}
+                <a href="/league" style={{ ...navBtn, marginBottom: 0, display: "block", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>See the race calendar</a>
+              </div>
+              <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid #2b2b2b" }}>
+                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Do it again at the next age up</div>
+                <p style={{ fontSize: 15, color: "#B9BDB8", margin: "0 0 10px", lineHeight: 1.5 }}>The whole plan works again at the next age up: same games, bigger child, longer laps. The badges already earned stay in the trophy case.</p>
+                <button onClick={juniorAgain} style={{ ...navBtn, marginBottom: 0 }}>Start the eight weeks again</button>
+              </div>
+            </div>
+          ) : programmeComplete ? (
+            <div>
+              <div style={{ background: "#AE5B20", borderRadius: 12, padding: "20px", textAlign: "center", color: "#fff", marginBottom: 16 }}>
+                <div className="display" style={{ fontSize: 18, marginBottom: 6 }}>{profile.raceReady ? "YOU MADE THE START LINE" : "YOU'VE GRADUATED"}{profile.name ? ", " + profile.name.toUpperCase() : ""}</div>
+                <p style={{ margin: 0, fontSize: 16 }}>{profile.raceReady ? "That was the deal: the start line in one piece. The full plan starts after the race." : "You're a regular rider now. That's the real win, and racing from here is entirely optional."}</p>
                 <button onClick={handleShareFinishCard} style={{ marginTop: 14, background: "#14171A", border: "none", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>📸 Share your achievement</button>
               </div>
+              {carryOnOffer && (
+                <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 12, border: "1px solid #1B8A82" }}>
+                  <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>{carryOnOffer.kind === "full" ? "The full plan starts after the race" : "Want more?"}</div>
+                  <p style={{ fontSize: 15, color: "#B9BDB8", margin: "0 0 10px", lineHeight: 1.5 }}>
+                    {carryOnOffer.kind === "full"
+                      ? "Twelve weeks, from week 1, on the days you already ride. Your badges and the rides you have logged stay."
+                      : carryOnOffer.fromWeek === 5
+                        ? "The obvious next step is the 8-week plan starting at week 5: descending and the first snack on the bike, your first hour, the first short efforts, then the taper and graduation."
+                        : "Carry on with weeks 8 to 11 of the full plan: the repeat week, the first short hard efforts, race pace if you fancy it, and the real thing, slowly."}
+                  </p>
+                  <button onClick={() => (carryOnOffer.kind === "full" ? startFullPlan() : carryOn(carryOnOffer))} style={{ ...navBtn, marginBottom: 0 }}>
+                    {carryOnOffer.kind === "full" ? "Start the full 12-week plan" : carryOnOffer.fromWeek === 5 ? "Carry on with the 8-week plan from week 5" : "Carry on with weeks 8 to 11"}
+                  </button>
+                </div>
+              )}
               {raceWeek ? null : nextRelevantRace ? (
                 <RaceAdvert race={nextRelevantRace} funPrice={funPrice} />
               ) : (
@@ -2678,8 +2945,8 @@ export default function SofaToSingletrack() {
                       <div key={s.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: i < upcoming.length - 1 ? 10 : 0 }}>
                         <div className="display" style={{ fontSize: 14, color: "#E8792B", minWidth: 30 }}>{s.session.day}</div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: 15 }}>{s.session.name}</div>
-                          <div style={{ fontSize: 14, color: "#B9BDB8" }}>{eff.detail}</div>
+                          <div style={{ fontWeight: 600, fontSize: 15 }}>{s.session.name}{roleLabel(s.session) ? <span style={{ fontWeight: 400, color: "#868A85" }}> · {roleLabel(s.session)} · {s.session.minsText || `${eff.mins} min`}</span> : null}</div>
+                          <div style={{ fontSize: 14, color: "#B9BDB8" }}>{eff.detail || s.session.child || ""}</div>
                         </div>
                         <button onClick={() => quickSkip(s)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#868A85", borderRadius: 6, padding: "3px 8px", fontSize: 13, cursor: "pointer", height: "fit-content" }}>Skip</button>
                       </div>
@@ -2725,9 +2992,9 @@ export default function SofaToSingletrack() {
                       style={{ width: "100%", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, padding: "8px", fontSize: 15, boxSizing: "border-box" }} />
                   </div>
                 </div>
-                <label style={{ display: "block", fontSize: 13, color: "#B9BDB8", marginBottom: 6 }}>How did it feel?</label>
+                <label style={{ display: "block", fontSize: 13, color: "#B9BDB8", marginBottom: 6 }}>{junior ? "How did it go? (the grown-up answers)" : "How did it feel?"}</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-                  {FEELINGS.map((f) => (
+                  {(junior ? JUNIOR_FEELINGS : FEELINGS).map((f) => (
                     <button key={f} onClick={() => setAdHocFeeling(f)}
                       style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid " + (adHocFeeling === f ? "#0F5F59" : "#2b2b2b"), background: adHocFeeling === f ? "#0F5F59" : "#0d0d0d", color: adHocFeeling === f ? "#fff" : "#B9BDB8", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                       {f}
@@ -2751,27 +3018,32 @@ export default function SofaToSingletrack() {
             </div>
           )}
 
+          {/* The donation and "Contact a coach" tiles are hidden on a Junior rider's dashboard; they stay on the account holder's. */}
           <div style={{ background: "#161616", borderRadius: 14, padding: "20px", marginBottom: 16, border: "2px solid #E8792B" }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Get in touch</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <button onClick={() => setStage("coachQA")} style={actionGridBtn}>💬 Contact a coach</button>
+              {!junior && <button onClick={() => setStage("coachQA")} style={actionGridBtn}>💬 Contact a coach</button>}
               <a href="/league" style={actionGridBtn}>📅 Race calendar</a>
               <button onClick={handleShare} style={actionGridBtn}>📤 Share this app</button>
               <a href="mailto:info@mtbeast.co.uk?subject=Sofa%20to%20Singletrack%20feedback" style={actionGridBtn}>💡 Feedback / bug</a>
             </div>
 
-            <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+            {!junior && (
+              <>
+                <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Support MTB East</div>
-            <p style={{ margin: "0 0 12px", fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>This app is free to use. If it's helped you, a donation helps us keep it that way.</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-              <a href="https://buy.stripe.com/4gMbJ2cXM6jFd1c2uR43S00" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>£5</a>
-              <a href="https://buy.stripe.com/bJeeVe3nc6jFbX81qN43S01" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>£10</a>
-              <a href="https://buy.stripe.com/bJe9AUbTI6jFbX8b1n43S02" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>Choose amount</a>
-            </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Support MTB East</div>
+                <p style={{ margin: "0 0 12px", fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>This app is free to use. If it's helped you, a donation helps us keep it that way.</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <a href="https://buy.stripe.com/4gMbJ2cXM6jFd1c2uR43S00" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>£5</a>
+                  <a href="https://buy.stripe.com/bJeeVe3nc6jFbX81qN43S01" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>£10</a>
+                  <a href="https://buy.stripe.com/bJe9AUbTI6jFbX8b1n43S02" target="_blank" rel="noopener noreferrer" style={actionGridBtn}>Choose amount</a>
+                </div>
+              </>
+            )}
           </div>
 
-          <CoachTips onContact={() => setStage("coachQA")} />
+          {!junior && <CoachTips onContact={() => setStage("coachQA")} />}
           <TipsAndAdvice />
 
           <FamilyPanel index={riderIndex} onSwitch={switchRider} onAdd={addRider} onRemove={removeRider} />
@@ -2782,23 +3054,27 @@ export default function SofaToSingletrack() {
 
       {stage === "checkin" && checkinTarget && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px" }}>
-          <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 8 }}>HOW DID IT GO?</div>
-          <h2 className="display" style={{ fontSize: 24, margin: "0 0 20px", color: "#E8792B" }}>{checkinTarget.session.name.toUpperCase()}</h2>
+          <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 8 }}>{junior ? "TICKED BY A GROWN-UP" : "HOW DID IT GO?"}</div>
+          <h2 className="display" style={{ fontSize: 24, margin: "0 0 12px", color: "#E8792B" }}>{checkinTarget.session.name.toUpperCase()}</h2>
+          {junior && !(checkinTarget.key in sessionLog) && (
+            <p style={{ margin: "0 0 14px", fontSize: 15, lineHeight: 1.5, color: "#B9BDB8" }}>For the grown-up who rode with {profile.name || "them"}: how did it go?</p>
+          )}
+          <DoneWhen session={checkinTarget.session} />
           {!(checkinTarget.key in sessionLog) && (
             <div>
-              {FEELINGS.map((opt) => (
+              {(junior ? JUNIOR_FEELINGS : FEELINGS).map((opt) => (
                 <button key={opt} onClick={() => submitCheckin(opt)} style={choiceBtn}>{opt}</button>
               ))}
               <div style={{ height: 8 }} />
-              <button onClick={() => submitCheckin("Didn't get to it")} style={{ ...choiceBtn, borderStyle: "dashed", color: "#B9BDB8" }}>
-                Didn't get to it this week — that's okay
+              <button onClick={() => submitCheckin(SKIPPED)} style={{ ...choiceBtn, borderStyle: "dashed", color: "#B9BDB8" }}>
+                {junior ? JUNIOR_SKIPPED_LABEL : "Didn't get to it this week — that's okay"}
               </button>
             </div>
           )}
           {checkinTarget.key in sessionLog && (
             <div>
               <div style={{ background: "#14171A", borderRadius: 12, padding: "18px 20px", marginBottom: 20, color: "#F4F3EF" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Coach note</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{junior ? "Coach note, for the grown-up" : "Coach note"}</div>
                 <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, minHeight: 20 }}>{coachNote}</p>
               </div>
 
