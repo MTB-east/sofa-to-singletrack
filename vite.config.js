@@ -15,17 +15,11 @@ export default defineConfig(({ command }) => {
     plugins: [
       react(),
       VitePWA({
-        registerType: "autoUpdate",
-        // Registered explicitly from src/main.jsx via virtual:pwa-register
-        // instead (registerSW({ immediate: true })) -- the default
-        // auto-injected script only calls navigator.serviceWorker.register
-        // with no update-handling logic, so a new deploy's service worker
-        // can finish installing in the background (skipWaiting +
-        // clientsClaim are both on) without the already-open page ever
-        // reloading to pick it up. virtual:pwa-register's registerSW
-        // reloads automatically once the new worker takes control, which
-        // is what actually fixes "still see the old version after a
-        // deploy" rather than needing a manual cache clear.
+        // "prompt": a new deploy's service worker waits until the rider taps Reload on the banner in src/main.jsx,
+        // so a page never reloads itself mid-ride. (Before this it was "autoUpdate", which reloaded as soon as the
+        // new worker took control.) Registered explicitly from src/main.jsx via virtual:pwa-register, which gives
+        // us onNeedRefresh; the default auto-injected script has no update handling at all.
+        registerType: "prompt",
         injectRegister: false,
         includeAssets: ["favicon.png", "brand/logo-full.png", "brand/header-mark.png", "brand/topo-bg.webp"],
         manifest: {

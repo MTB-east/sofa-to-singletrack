@@ -5,18 +5,21 @@ import {
   PLAN_VERSION, EFFORT_WORDS, RACE_READY_TEXT, JUNIOR_INTRO, JUNIOR_BADGES,
   buildAdultPlan, buildContinuationPlan, buildRaceReadyPlan, buildJuniorPlan,
   planForRace, weeksUntil, weeksFromSaved, reassignDays, roleLabel, isJuniorSession,
+  normaliseSaved, needsBlankFallback, newRiderId, normaliseRiderIndex, freshRiderIndex, shouldSplitMain, renameRider,
+  isRemovedRider, markRemoved, confirmRemoved, dropRiders, withLastSaved, retryDelay, mergeLogs, syncStatusLine,
+  changingLabel, sessionWords, recentlyLogged, DAY_NAMES, missedWeeks, shiftProgrammeStart,
 } from "./lib/plan.js";
 import { FALLBACK_SITE_NAV, loadSiteNav, currentHref, renderSiteNav, updateSiteNavAccount, wireSiteNav } from "./lib/siteNav.js";
 import "../games/site-nav.css";
 
 /*
-DESIGN PLAN — v5
+DESIGN PLAN, v5
 Palette (from the MTB East mascot: black body, teal fur/claws, orange eyes/wordmark):
   --ink #14171A  --teal #1B8A82  --tealdk #0F5F59  --orange #E8792B  --paper #F4F3EF
 Type: Fjalla One (display) / Inter (body)
 Layout signature: contour/elevation profile line as the overall progress bar,
   active week marked with a simple enlarged orange dot (bike silhouette tried
-  and dropped — read as amateurish at this scale, the plain dot reads cleaner).
+  and dropped: it read as amateurish at this scale, the plain dot reads cleaner).
 Changed in this version: riders choose how many days a week they can ride (2 or
   3) and which specific days during setup, rather than a fixed Tue/Thu/Sat.
   A direct "Skip" button sits on every session card for a same-tap skip with no
@@ -25,7 +28,7 @@ Changed in this version: riders choose how many days a week they can ride (2 or
   single skip doesn't zero it either) rather than a raw counter.
 
 PWA build: coach notes come from the static ./data/coach-scenarios.json lookup
-  table (no live AI call), and progress is persisted to localStorage — this is
+  table (no live AI call), and progress is persisted to localStorage: this is
   the entire persistence layer, single device, no accounts, no data leaving
   the browser.
 */
@@ -102,6 +105,7 @@ function nextCue(cues, elapsedMs, spoken) {
 }
 const TEXT_SCALES = { standard: 1, large: 1.12, larger: 1.25, largest: 1.4 };
 const TEXT_SIZE_KEY = "sofaToSingletrack:textSize";
+const TIMER_SETTINGS_KEY = "sofaToSingletrack:timerSettings"; // "open" when the Timer settings fold was left open
 
 // The plans themselves (the 12-week plan, the 8-week and 4-week Taster cuts of it, the two-day version, the Race ready
 // block and Sofa to Singletrack Juniors) live in src/lib/plan.js, transcribed from the signed-off coaching plans
@@ -167,8 +171,6 @@ function TalkTest() {
   );
 }
 
-// Applies a rider's current ±5 min adjustment to an adult session's duration (never below 5 min). Juniors sessions
-// are never adjusted. Old session copy used a {mins} placeholder, which is still filled here.
 // Whether an effort note says the same as the session's detail, ignoring case and a trailing full stop: week 6's
 // "Breathing in the middle 10 minutes" is also its whole detail, and it should not be shown twice.
 const sameNote = (note, detail) => {
@@ -176,8 +178,11 @@ const sameNote = (note, detail) => {
   return !!note && norm(note) === norm(detail);
 };
 
-function effectiveSession(session, adjustmentMins) {
-  const mins = isJuniorSession(session) ? session.mins : Math.max(5, session.mins + (adjustmentMins || 0));
+// A session as the rider sees it. The minutes are the plan's minutes, always: the signed-off plan says the app never
+// adds or takes away time (a rider who finds a week easy adds five minutes themselves). Old session copy used a
+// {mins} placeholder, which is still filled here.
+function effectiveSession(session) {
+  const mins = session.mins;
   return {
     ...session,
     mins,
@@ -229,41 +234,41 @@ function JuniorGame({ session }) {
 }
 
 const NUTRITION_TIPS = [
-  "Eat a carb-rich meal 2–3 hours before a ride — porridge or toast with banana works well.",
-  "Sip water throughout every ride, even short ones — don't wait until you're thirsty.",
+  "Eat a carb-rich meal two to three hours before a ride: porridge or toast with banana works well.",
+  "Sip water throughout every ride, even short ones. Don't wait until you're thirsty.",
   "For rides over 60 minutes, bring a snack: a banana, dates, or a cereal bar.",
-  "After a ride, eat something with carbs and protein within an hour — a wrap or a yoghurt is enough.",
+  "After a ride, eat something with carbs and protein within an hour: a wrap or a yoghurt is enough.",
   "On hot days, add a pinch of salt to your water bottle or use an electrolyte tablet.",
 ];
 
 const BIKE_CARE_TIPS = [
-  "Check your tyre pressure before every ride — soft tyres are the most common cause of a sluggish, hard-feeling ride.",
+  "Check your tyre pressure before every ride: soft tyres are the most common cause of a sluggish, hard-feeling ride.",
   "Quick brake check before you set off: squeeze each lever and make sure the wheel doesn't spin freely with it held.",
-  "Keep your chain lightly oiled — a dry, squeaky chain wears out faster and shifts badly.",
+  "Keep your chain lightly oiled: a dry, squeaky chain wears out faster and shifts badly.",
   "After a wet or muddy ride, a quick wipe-down keeps grit out of your moving parts and extends your bike's life.",
-  "Learn the M-check — a two-minute top-to-bottom safety check worth doing before any ride on unfamiliar ground.",
+  "Learn the M-check: a two-minute top-to-bottom safety check worth doing before any ride on unfamiliar ground.",
 ];
 
 const TRAIL_ETIQUETTE_TIPS = [
-  "Give way to walkers and horse riders — slow down, say a friendly hello, and pass wide where you can.",
-  "Horses can spook easily — slow right down well before you reach them and wait if the rider asks you to.",
-  "Let other trail users know you're there — a simple \"hello\" or \"morning\" as you pass is great.",
-  "Take your litter home with you — the trails only stay great if everyone does this.",
-  "On narrow trails, riders heading uphill usually have priority — be ready to pull over if you're descending.",
+  "Give way to walkers and horse riders: slow down, say a friendly hello, and pass wide where you can.",
+  "Horses can spook easily, so slow right down well before you reach them and wait if the rider asks you to.",
+  "Let other trail users know you're there: a simple \"hello\" or \"morning\" as you pass is great.",
+  "Take your litter home with you. The trails only stay great if everyone does this.",
+  "On narrow trails, riders heading uphill usually have priority, so be ready to pull over if you're descending.",
 ];
 
 const PRE_RIDE_CHECKLIST = [
-  "Helmet — fitted properly and buckled",
+  "Helmet, fitted properly and buckled",
   "Water bottle or hydration pack",
   "Weather-appropriate layers you can add or remove",
   "Phone, charged, in case you need it",
-  "Tyres — check the side of the tyre for the correct pressure range",
+  "Tyres: check the side of the tyre for the correct pressure range",
   "Let someone know roughly where you're riding and when you'll be back",
 ];
 
 const BIKE_SETUP_STEPS = [
-  { title: "Saddle height", body: "Sit on the saddle and put your heel (with shoes on) on the pedal at its lowest point — your leg should be almost straight, with just a slight bend. If that doesn't feel comfortable straight away, start a little lower and raise it gradually over a few rides." },
-  { title: "Tyre pressure", body: "Squeeze the tyre between finger and thumb — it shouldn't feel rock hard or squash flat. Check the pressure range printed on the tyre's sidewall (usually in PSI) and use a pump with a gauge if you have one." },
+  { title: "Saddle height", body: "Sit on the saddle and put your heel (with shoes on) on the pedal at its lowest point: your leg should be almost straight, with just a slight bend. If that doesn't feel comfortable straight away, start a little lower and raise it gradually over a few rides." },
+  { title: "Tyre pressure", body: "Squeeze the tyre between finger and thumb: it shouldn't feel rock hard or squash flat. Check the pressure range printed on the tyre's sidewall (usually in PSI) and use a pump with a gauge if you have one." },
   { title: "Brakes", body: "Squeeze each lever in turn. The wheel shouldn't spin freely once the brake is held on, and the lever shouldn't pull all the way back to the bar." },
   { title: "Helmet fit", body: "It should sit level on your head, not tipped back. The strap should be snug enough that only one or two fingers fit underneath, and the helmet shouldn't rock forwards, backwards, or side to side." },
 ];
@@ -280,15 +285,15 @@ const GLOSSARY = {
   "heavy feet light hands": "Weight through the pedals, a relaxed grip on the bars, so the bike can move under you.",
   "bridleway": "A path where walkers, horses and bikes are all allowed. Give way to walkers and horse riders.",
   "green or blue grade": "Trail centre grades: green is the easiest, blue the next step up. Both are fine for a first trail.",
-  "clipping in": "Locking your shoe into a clip-in (clipless) pedal. If you're using flat pedals, this doesn't apply to you — flat pedals are a totally fine way to start.",
-  "figure-of-eights": "Riding a figure-of-eight pattern at slow speed — a simple way to build balance and low-speed bike control.",
-  "figure-of-8s": "Riding a figure-of-eight pattern at slow speed — a simple way to build balance and low-speed bike control.",
-  "singletrack": "A narrow off-road trail, usually wide enough for one rider at a time — the classic mountain-biking trail.",
+  "clipping in": "Locking your shoe into a clip-in (clipless) pedal. If you're using flat pedals, this doesn't apply to you. Flat pedals are a fine way to start.",
+  "figure-of-eights": "Riding a figure-of-eight pattern at slow speed: a simple way to build balance and low-speed bike control.",
+  "figure-of-8s": "Riding a figure-of-eight pattern at slow speed: a simple way to build balance and low-speed bike control.",
+  "singletrack": "A narrow off-road trail, usually wide enough for one rider at a time: the classic mountain-biking trail.",
   "cadence": "How fast you're pedalling (revolutions per minute). A smooth, comfortable spin is usually better than mashing hard on each stroke.",
-  "zone 2": "A steady, conversational effort — you should be able to talk in short sentences without gasping for breath.",
-  "conversational pace": "An effort easy enough that you could hold a conversation while riding — not a flat-out effort.",
+  "zone 2": "A steady, conversational effort: you should be able to talk in short sentences without gasping for breath.",
+  "conversational pace": "An effort easy enough that you could hold a conversation while riding, well short of flat out.",
   "recovery ride": "A short, deliberately easy ride, done to help your legs recover rather than to build fitness.",
-  "corners": "Cornering well is about looking through the bend, leaning the bike (not just your body), and staying relaxed on the bars.",
+  "corners": "Cornering well is about looking through the bend, leaning the bike as well as your body, and staying relaxed on the bars.",
   "time-trial": "Riding as hard and steady as you can hold, alone against the clock, rather than racing wheel-to-wheel with others.",
 };
 
@@ -404,7 +409,7 @@ function downloadSessionICS(session, weekNum, weekTitle, programStart) {
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Sofa to Singletrack//EN", "BEGIN:VEVENT",
     `UID:${Date.now()}-w${weekNum}-${session.day}@sofatosingletrack`,
     `DTSTAMP:${toICSDate(new Date())}`, `DTSTART:${toICSDate(start)}`, `DTEND:${toICSDate(end)}`,
-    `SUMMARY:${session.name} — Week ${weekNum}: ${weekTitle}`,
+    `SUMMARY:${session.name}, Week ${weekNum}: ${weekTitle}`,
     `DESCRIPTION:${(session.detail || session.child || "").replace(/,/g, "\\,")}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
@@ -545,7 +550,7 @@ function RiderSwitcher({ index, onSwitch }) {
   );
 }
 
-function FamilyPanel({ index, onSwitch, onAdd, onRemove }) {
+function FamilyPanel({ index, onSwitch, onAdd, onRemove, bordered = true }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -556,10 +561,13 @@ function FamilyPanel({ index, onSwitch, onAdd, onRemove }) {
   };
   const btn = { minHeight: 44, padding: "8px 14px", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer", background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8" };
   return (
-    <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
+    <div style={bordered ? { background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" } : undefined}>
       <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Riding with family?</div>
       <p style={{ margin: "0 0 12px", fontSize: 15, lineHeight: 1.5, color: "#F4F3EF" }}>
         Everyone gets their own plan and progress, all on this one phone and account. Add a child or a partner, then switch between riders at the top of the screen.
+      </p>
+      <p style={{ margin: "0 0 12px", fontSize: 15, lineHeight: 1.5, color: "#B9BDB8" }}>
+        On a second phone, sign in and your riders appear. To add someone new there, use Add a rider.
       </p>
       {index.riders.length > 1 && (
         <ul style={{ margin: "0 0 12px", padding: 0, listStyle: "none" }}>
@@ -568,7 +576,7 @@ function FamilyPanel({ index, onSwitch, onAdd, onRemove }) {
               <span>{r.name || "Me"}{r.id === index.active ? " (riding now)" : ""}</span>
               <span style={{ display: "flex", gap: 8 }}>
                 {r.id !== index.active && <button onClick={() => onSwitch(r.id)} style={btn}>Switch</button>}
-                {r.id !== "main" && <button onClick={() => onRemove(r.id)} style={{ ...btn, color: "#E24B4A", borderColor: "#5a2a2a" }}>Remove</button>}
+                {r.id !== index.riders[0].id && <button onClick={() => onRemove(r.id)} style={{ ...btn, color: "#E24B4A", borderColor: "#5a2a2a" }}>Remove</button>}
               </span>
             </li>
           ))}
@@ -626,19 +634,35 @@ function RaceCoachNote({ race, note }) {
 }
 
 // Asks visitors who aren't signed in to sign in with their MTB east account, so their progress follows them between devices.
-function AccountCard({ account, onHide }) {
+// Signed in, it says what the account actually holds: saved just now, waiting for a connection, or signed out.
+function AccountCard({ account, onHide, syncState }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
   if (!account) return null;
+  const line = syncStatusLine(syncState, now);
+  const signInLink = <a href="/account/login?next=/programme" style={{ color: "#E8792B", fontWeight: 700 }}>Sign in</a>;
+  if (syncState && syncState.status === "signedOut") {
+    return (
+      <div role="status" style={{ fontSize: 16, color: "#E8792B", marginBottom: 14, lineHeight: 1.5 }}>
+        {line.text} {signInLink}
+      </div>
+    );
+  }
   if (account.signedIn) {
+    const color = line.tone === "warn" ? "#E8792B" : "#B9BDB8";
     return (
       <div style={{ fontSize: 16, color: "#B9BDB8", marginBottom: 14, lineHeight: 1.5 }}>
-        ✓ Signed in{account.name ? " as " + account.name : ""}. Your progress is saved to your account, so it follows you to any device.
+        ✓ Signed in{account.name ? " as " + account.name : ""}. <span role="status" style={{ color }}>{line.text}</span>
       </div>
     );
   }
   return (
     <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "1px solid #2b2b2b", position: "relative" }}>
       <button onClick={onHide} aria-label="Hide this" style={{ position: "absolute", top: 0, right: 0, width: 44, height: 44, background: "none", border: "none", color: "#868A85", fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>
-      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4, paddingRight: 36 }}>Keep your progress on every device</div>
+      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4, paddingRight: 36 }}>Keep your progress if you change phone</div>
       <p style={{ fontSize: 15, lineHeight: 1.5, color: "#B9BDB8", margin: "0 0 12px" }}>
         Sign in with your MTB east account (the same one you use to enter races) and your progress is saved for you. It's free, and the app still works without it.
       </p>
@@ -813,7 +837,7 @@ function SplashScreen() {
 
 const FAQS = [
   { q: "Do I need to already own a mountain bike?", a: "No. You can start by using any safe, working bike you have access to. A mountain bike will make off-road riding more comfortable, but the early sessions can be done on paths, roads, and gentle trails." },
-  { q: "I have not ridden a bike in years. Is this really for me?", a: "Absolutely. The programme is designed for people starting from zero, returning after a long break, or rebuilding confidence. You begin gently and progress in small, manageable steps." },
+  { q: "I have not ridden a bike in years. Is this really for me?", a: "Yes. The programme is designed for people starting from zero, returning after a long break, or rebuilding confidence. You begin gently and progress in small, manageable steps." },
   { q: "Should I check with my doctor before I start?", a: "If you have a health condition, are pregnant, are recovering from an injury or illness, take medication, or have not been active for a long time, yes: speak to your GP first. Whoever you are, stop and get medical advice if you feel chest pain, dizziness, unusual breathlessness or pain that does not ease. If you are under 16, ask a parent or guardian to read this and to ride with you where needed." },
   { q: "What if I cannot ride very far yet?", a: "That is exactly where you are meant to start. Early rides may be short, with plenty of recovery and walking breaks if needed. There is no expectation to keep up with experienced riders." },
   { q: "Do I need to be fit before I begin?", a: "No. The goal is to help you become fitter over time. You only need to be comfortable starting at your own level and taking things gradually." },
@@ -823,14 +847,14 @@ const FAQS = [
   { q: "Do I have to ride down steep hills or over jumps?", a: "No. You choose your own challenge level. There are no jumps, drops, or steep descents required to complete the programme. Many riders enjoy mountain biking for fitness, fresh air, and social rides without wanting technical features." },
   { q: "What equipment do I need to get started?", a: "A safe bike, a properly fitted helmet, comfortable clothing, water, and something to repair a puncture are the basics. You do not need expensive shoes, clothing, suspension, or race equipment to begin." },
   { q: "What type of mountain bike should I buy?", a: "Do not rush into buying one. If you decide to, a comfortable hardtail mountain bike from a reputable shop is often a great first choice." },
-  { q: "Can I do the programme on an e-bike?", a: "Yes, provided it is legal and suitable for the terrain where you ride. An e-bike can make hills and longer rides feel more approachable while still building skills, confidence, and fitness. Sessions can be based on time and effort, not only distance." },
+  { q: "Can I do the programme on an e-bike?", a: "Yes, provided it is legal and suitable for the terrain where you ride. An e-bike can make hills and longer rides feel more approachable while still building skills, confidence, and fitness. Sessions are based on time and effort, so an e-bike fits the plan as it is." },
   { q: "What if I need to stop, repeat a week, or miss a few sessions?", a: "That is completely fine. Life happens. You can repeat sessions, take extra rest, or resume when you are ready. Progress is not ruined by a missed week." },
-  { q: "How much time will I need each week?", a: "The programme fits around real life: two or three short rides a week, on the days you choose. If a ride felt too hard, say so when you log it and your next sessions get a little shorter. If it felt easy, they get a little longer." },
+  { q: "How much time will I need each week?", a: "The programme fits around real life: two or three short rides a week, on the days you choose. The early rides are 20 to 30 minutes, and the longest ride of the whole plan is an hour." },
   { q: "Where can I safely ride?", a: "You do not need mountains on your doorstep. Start with quiet cycle paths, parks, bridleways, forest roads, towpaths, and easy local trails where cycling is permitted. Look out for signs at the entrance, give way to walkers and horse riders, leave gates as you find them, and take your litter home." },
-  { q: "What if I do not have anyone to ride with?", a: "You can complete the whole programme solo. It can also help you find beginner-friendly group rides, bike shops, clubs, or event communities when you feel ready. Riding with others is optional, not a requirement." },
+  { q: "What if I do not have anyone to ride with?", a: "You can do the whole programme on your own. Riding with others is optional. When you feel ready, an MTB East race day is a friendly place to meet other riders, and you can come and watch first." },
   { q: "Do I have to race at the end?", a: "No. Racing is one possible destination, not the purpose of the programme. Your finish line might be feeling fitter, exploring local trails, riding with friends, commuting, or simply enjoying being outside." },
   { q: "What is an MTB \"fun race,\" and can a beginner enter one?", a: "A fun race is an informal event where the emphasis is on completing the course and enjoying the day. Riders of mixed experience. You can aim for one when it feels exciting, or come along to watch first." },
-  { q: "Can I attend an event just to watch and see what it is like?", a: "Definitely. Watching is a brilliant, low-pressure way to learn what mountain biking events feel like, meet riders, ask questions, and decide whether you would enjoy taking part later. You do not need to earn your place in the community." },
+  { q: "Can I attend an event just to watch and see what it is like?", a: "Yes. Watching is a brilliant, low-pressure way to learn what mountain biking events feel like, meet riders, ask questions, and decide whether you would enjoy taking part later. You do not need to earn your place in the community." },
   { q: "What if I decide I never want to race or ride difficult trails?", a: "You have still succeeded. Sofa to Singletrack is about opening up cycling, not pushing everyone into the same outcome. If you finish fitter, happier, more confident on a bike, and able to enjoy the rides you choose, the programme has done its job." },
 ];
 
@@ -902,6 +926,11 @@ function TipsAndAdvice() {
 
           <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Found a week easy?</div>
+          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>Add five minutes to each ride yourself. The app never adds it for you.</p>
+
+          <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+
           <TalkTest />
 
           <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
@@ -917,12 +946,50 @@ function TipsAndAdvice() {
   );
 }
 
-function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, storageKey }) {
+// One fold for everything a rider sets up once: text size, training days, the family riders, and backups.
+function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, storageKey, onRestoreBackup, textSize, onTextSize, family }) {
   const [expanded, setExpanded] = useState(false);
   const [editingDays, setEditingDays] = useState(false);
   const [draftDays, setDraftDays] = useState(profile.chosenDays);
   const [pendingImport, setPendingImport] = useState(null);
   const fileInputRef = useRef(null);
+  // The copy set aside when the account's copy replaced this device's (storageKey + ":backup"), if there is one.
+  const [backup, setBackup] = useState(null);
+  const readBackup = () => {
+    try {
+      const raw = localStorage.getItem(storageKey + ":backup");
+      const safe = raw ? normaliseSaved(raw, blankSaved("")) : null;
+      setBackup(safe ? { raw, sessions: Object.keys(safe.sessionLog).length + safe.adHocLog.length, savedAt: safe.savedAt } : null);
+    } catch (e) { setBackup(null); }
+  };
+  useEffect(readBackup, [storageKey, expanded]);
+
+  const downloadJson = (text) => {
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sofa-to-singletrack-backup-${dateKey(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Backup downloaded.");
+  };
+
+  const restoreBackup = () => {
+    if (!backup) return;
+    const safe = normaliseSaved(backup.raw, blankSaved(""));
+    if (!safe || !safe.weeks) { showToast("That earlier copy has no programme in it, so it can't be restored."); return; }
+    if (!window.confirm("Replace your current progress with the earlier copy from this device?")) return;
+    onRestoreBackup({ ...safe, savedAt: Date.now() });
+  };
+
+  const discardBackup = () => {
+    if (!window.confirm("Throw away the earlier copy? This can't be undone.")) return;
+    try { localStorage.removeItem(storageKey + ":backup"); } catch (e) { /* storage unavailable */ }
+    setBackup(null);
+  };
 
   const startEditDays = () => {
     setDraftDays(profile.chosenDays);
@@ -949,18 +1016,18 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
     showToast("Training days updated.");
   };
 
+  // The file holds the live copy, plus the earlier copy under `backup` if one is kept (ignored when restoring).
   const exportProgress = () => {
-    const raw = localStorage.getItem(storageKey) || "{}";
-    const blob = new Blob([raw], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `sofa-to-singletrack-backup-${dateKey(new Date())}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast("Backup downloaded.");
+    let text = "{}";
+    try {
+      const raw = localStorage.getItem(storageKey);
+      const live = raw ? JSON.parse(raw) : {};
+      const backupRaw = localStorage.getItem(storageKey + ":backup");
+      let parsedBackup = null;
+      if (backupRaw) { try { parsedBackup = JSON.parse(backupRaw); } catch (e) { parsedBackup = null; } }
+      text = JSON.stringify(parsedBackup ? { ...live, backup: parsedBackup } : live);
+    } catch (e) { /* storage unavailable or unreadable: download what we have */ }
+    downloadJson(text);
   };
 
   const handleFileSelected = (e) => {
@@ -977,26 +1044,41 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
         }
         setPendingImport({ text: reader.result, name: parsed.profile.name || "rider", ridesLogged: Object.keys(parsed.sessionLog || {}).length });
       } catch (err) {
-        showToast("Couldn't read that file — is it a backup exported from this app?");
+        showToast("Couldn't read that file. Is it a backup exported from this app?");
       }
     };
     reader.readAsText(file);
   };
 
+  // A restored file is written in its tidied shape with savedAt = now, so a deliberate restore wins the next sync.
+  // The file's own `backup` field (an earlier copy) is dropped by normaliseSaved.
   const confirmImport = () => {
     if (!pendingImport) return;
-    localStorage.setItem(storageKey, pendingImport.text);
+    const safe = normaliseSaved(pendingImport.text, blankSaved(""));
+    if (!safe || !safe.weeks) { showToast("That backup has no programme in it, so it wasn't restored."); setPendingImport(null); return; }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ ...safe, savedAt: Date.now() }));
+    } catch (e) {
+      showToast("This browser wouldn't save the backup. Try again, or sign in so it saves to your account.");
+      return;
+    }
     window.location.reload();
   };
 
   return (
     <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #2b2b2b" }}>
-      <button onClick={() => setExpanded((e) => !e)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <button onClick={() => setExpanded((e) => !e)} aria-expanded={expanded} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Settings</span>
-        <span style={{ color: "#E8792B", fontSize: 16 }}>{expanded ? "–" : "+"}</span>
+        <span style={{ color: "#E8792B", fontSize: 16 }} aria-hidden="true">{expanded ? "–" : "+"}</span>
       </button>
+      {!expanded && (
+        <p style={{ margin: "10px 0 0", fontSize: 14, color: "#868A85", lineHeight: 1.4 }}>Text size, training days, family riders and backups</p>
+      )}
       {expanded && (
         <div style={{ marginTop: 14 }}>
+          {onTextSize && <TextSizeControl value={textSize} onChange={onTextSize} />}
+          {onTextSize && <div style={{ borderTop: "1px solid #2b2b2b", margin: "4px 0 14px" }} />}
+
           <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Training days</div>
           {!editingDays ? (
             <>
@@ -1005,7 +1087,7 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
             </>
           ) : (
             <>
-              <p style={{ margin: "0 0 10px", fontSize: 14, color: "#B9BDB8" }}>Pick exactly {profile.sessionsPerWeek} — tap to select or deselect.</p>
+              <p style={{ margin: "0 0 10px", fontSize: 14, color: "#B9BDB8" }}>Pick exactly {profile.sessionsPerWeek}. Tap to select or deselect.</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                 {WEEKDAYS.map((day) => {
                   const selected = draftDays.includes(day);
@@ -1037,10 +1119,23 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
             <input ref={fileInputRef} type="file" accept="application/json" onChange={handleFileSelected} style={{ display: "none" }} />
           </div>
 
+          {backup && (
+            <div style={{ marginTop: 12, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 8, padding: "12px 14px" }}>
+              <p style={{ margin: "0 0 10px", fontSize: 14, color: "#F4F3EF", lineHeight: 1.4 }}>
+                An earlier copy from this device is kept: {backup.sessions} session{backup.sessions === 1 ? "" : "s"} logged, saved {backup.savedAt ? new Date(backup.savedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "on an unknown date"}.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={restoreBackup} style={{ background: "#AE5B20", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Restore</button>
+                <button onClick={() => downloadJson(backup.raw)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Download</button>
+                <button onClick={discardBackup} style={{ background: "none", border: "1px solid #5a2a2a", color: "#E24B4A", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Discard</button>
+              </div>
+            </div>
+          )}
+
           {pendingImport && (
             <div style={{ marginTop: 12, background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 8, padding: "12px 14px" }}>
               <p style={{ margin: "0 0 10px", fontSize: 14, color: "#F4F3EF", lineHeight: 1.4 }}>
-                This backup is for <strong>{pendingImport.name}</strong>, with {pendingImport.ridesLogged} session{pendingImport.ridesLogged === 1 ? "" : "s"} logged. Restoring it will replace your current progress on this device — this can't be undone.
+                This backup is for <strong>{pendingImport.name}</strong>, with {pendingImport.ridesLogged} session{pendingImport.ridesLogged === 1 ? "" : "s"} logged. Restoring it will replace your current progress on this device. This can't be undone.
               </p>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={confirmImport} style={{ background: "#AE5B20", border: "none", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Replace my progress</button>
@@ -1048,13 +1143,20 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
               </div>
             </div>
           )}
+
+          {family && (
+            <>
+              <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+              {family}
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-const GENERIC_COACH_FALLBACK = "Nice work getting out there — keep it up and see you at the next session.";
+const GENERIC_COACH_FALLBACK = "Nice work getting out there. Keep it up and see you at the next session.";
 
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -1117,7 +1219,7 @@ function playTimerAlertSound(existingCtx) {
     beep(now + 0.35, 880);
     beep(now + 0.7, 1108.73);
   } catch (e) {
-    // Web Audio unavailable — vibration/visual alert still fire
+    // Web Audio unavailable: vibration/visual alert still fire
   }
 }
 
@@ -1158,14 +1260,24 @@ function getCoachNote(target, feeling, junior) {
   return phaseScenarios[feeling] || phaseScenarios["About right"] || GENERIC_COACH_FALLBACK;
 }
 
+// What each kind of adult session is for, one line, keyed by the session names in src/lib/plan.js. A two-day week's
+// "Skill then ride: ..." session matches by its prefix. Juniors sessions explain themselves on the card.
 const MICRO_EXPLAINERS = {
-  "Handling drills": "Slow-speed figure-of-8s build the balance and control you'll rely on for cornering later — it looks basic but it's the foundation.",
-  "Braking practice": "Learning to use front and rear brakes together (not just the back one) is what lets you stop quickly without skidding.",
-  "Intervals": "Short hard bursts with rest in between — this builds the kind of fitness that copes with race-pace surges, not just steady riding.",
-  "Race simulation": "A dress rehearsal at the effort you'd actually hold in a race, so race day doesn't feel like a totally new sensation.",
-  "Course recon": "Riding the actual course slowly beforehand means race day is about racing, not figuring out where the course goes.",
-  "Start practice": "Race starts are their own skill — practising from a standstill builds the power and confidence for the first few seconds.",
-  "Fuelling practice": "Eating and drinking on the bike feels different to doing it standing still — better to get used to it now than find out mid-race.",
+  "Skills": "One thing to practise, somewhere easy, so the trail stops surprising you. It looks basic. It is the foundation.",
+  "Steady": "An easy ride at Chatting pace. This is where most of the fitness comes from, so there is no need to push it.",
+  "The long one": "The longest ride of the week, a little longer each time. Time on the bike, not speed.",
+  "Intervals": "Short hard bursts with easy riding between them. They build the fitness that copes with a surge, and they are over quickly.",
+  "Race simulation": "A dress rehearsal at the effort you would hold in a race, so race day is a feeling you already know.",
+  "Course recon": "Riding the course slowly first means race day is about riding it, not working out where it goes.",
+  "Easy spin": "Legs turning, nothing more. Rest is part of the plan.",
+  "Kit check ride": "A short ride to find anything that rubs, squeaks or leaks before it matters.",
+  "Graduation ride": "The ride the whole plan was for. Your pace, your terms.",
+  "Skill then ride": "The week's skill for ten minutes, then the long ride, so nothing is dropped on two days a week.",
+};
+const explainerFor = (session) => {
+  if (!session || isJuniorSession(session)) return null;
+  const name = session.name || "";
+  return MICRO_EXPLAINERS[name] || (name.startsWith("Skill then ride") ? MICRO_EXPLAINERS["Skill then ride"] : null);
 };
 
 function ContourProgress({ weeks, currentWeek }) {
@@ -1209,7 +1321,7 @@ function SpeedoGauge({ pct }) {
   const needleAngle = 180 - (clamped / 100) * 180;
   const needleTip = polarToCartesian(cx, cy, r - trackWidth - 6, needleAngle);
   return (
-    <svg viewBox="0 0 240 148" role="img" aria-label={`Programme ${clamped}% complete`} style={{ display: "block", width: "100%", height: "auto" }}>
+    <svg viewBox="0 0 240 148" role="img" aria-label={`${clamped}% of the programme done`} style={{ display: "block", width: "100%", height: "auto" }}>
       <path d={`M ${start.x} ${start.y} A ${r} ${r} 0 1 1 ${end.x} ${end.y}`} fill="none" stroke="#2b2b2b" strokeWidth={trackWidth} strokeLinecap="round" />
       {clamped > 0 && (
         <path
@@ -1224,7 +1336,7 @@ function SpeedoGauge({ pct }) {
       <line x1={cx} y1={cy} x2={needleTip.x} y2={needleTip.y} stroke="#E8792B" strokeWidth={3} strokeLinecap="round" />
       <circle cx={cx} cy={cy} r={7} fill="#E8792B" />
       <text x={cx} y={cy - 18} textAnchor="middle" className="display" fontSize="34" fill="#F4F3EF">{clamped}%</text>
-      <text x={cx} y={cy + 20} textAnchor="middle" fontSize="11" fill="#B9BDB8" fontWeight="600">PROGRAMME COMPLETE</text>
+      <text x={cx} y={cy + 20} textAnchor="middle" fontSize="11" fill="#B9BDB8" fontWeight="600">of the programme done</text>
     </svg>
   );
 }
@@ -1267,7 +1379,10 @@ function dateKey(d) {
 
 // weekNumberForDate lives in src/lib/plan.js (tested).
 
-function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLogged, totalSessions, sessionDurations, adjustmentMins }) {
+// "Tue 20 Oct" for a date, as read out for a calendar day and shown on the Next up card.
+const shortDate = (d) => d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+
+function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLogged, totalSessions, sessionDurations }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [previewKey, setPreviewKey] = useState(null);
 
@@ -1278,8 +1393,8 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
       const feeling = sessionLog[key];
       const status = feeling === undefined ? "upcoming" : feeling === "Didn't get to it" ? "skipped" : "done";
       const d = sessionDate(programStart, w.n, s.day);
-      const eff = status === "upcoming" ? effectiveSession(s, adjustmentMins) : s;
-      sessionsByDate[dateKey(d)] = { status, name: s.name, detail: eff.detail || s.child || "", mins: sessionDurations[key] ?? eff.mins };
+      const eff = status === "upcoming" ? effectiveSession(s) : s;
+      sessionsByDate[dateKey(d)] = { status, name: s.name, role: roleLabel(s) || s.name, detail: eff.detail || s.child || "", mins: sessionDurations[key] ?? eff.mins };
     });
   });
   const adHocByDate = {};
@@ -1302,7 +1417,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
   const rows = [];
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
 
-  const dotColor = { done: "#1B8A82", skipped: "#5c5f5c", upcoming: "#E8792B" };
+  const dotColor = { done: "#1B8A82", skipped: "#868A85", upcoming: "#E8792B" };
   const minOffset = -1;
   const maxOffset = Math.ceil(weeks.length / 4) + 1;
 
@@ -1314,9 +1429,9 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "12px 0 8px" }}>
-        <button onClick={() => setMonthOffset((m) => Math.max(minOffset, m - 1))} disabled={monthOffset <= minOffset} style={monthNavBtn}>‹</button>
-        <div className="display" style={{ fontSize: 15, color: "#F4F3EF" }}>{monthLabel}</div>
-        <button onClick={() => setMonthOffset((m) => Math.min(maxOffset, m + 1))} disabled={monthOffset >= maxOffset} style={monthNavBtn}>›</button>
+        <button type="button" onClick={() => setMonthOffset((m) => Math.max(minOffset, m - 1))} disabled={monthOffset <= minOffset} aria-label="Previous month" style={monthNavBtn}>‹</button>
+        <div className="display" style={{ fontSize: 15, color: "#F4F3EF" }} aria-live="polite">{monthLabel}</div>
+        <button type="button" onClick={() => setMonthOffset((m) => Math.min(maxOffset, m + 1))} disabled={monthOffset >= maxOffset} aria-label="Next month" style={monthNavBtn}>›</button>
       </div>
 
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
@@ -1345,22 +1460,33 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
               const hasPreviewContent = info || hasAdHoc;
               const isToday = k === todayKey;
               const isPreviewing = previewKey === k;
+              // "Tue 20 Oct, Ride A, done" (or upcoming / skipped), plus "extra ride" for an off-plan ride that day.
+              const labelParts = [shortDate(d)];
+              if (info) labelParts.push(info.role, info.status);
+              if (hasAdHoc) labelParts.push(adHocForDay.length === 1 ? "extra ride" : `${adHocForDay.length} extra rides`);
+              if (isToday) labelParts.push("today");
               return (
                 <div key={ci} style={{ flex: 1, position: "relative" }}>
-                  <div
+                  <button
+                    type="button"
+                    aria-label={labelParts.join(", ")}
+                    aria-expanded={hasPreviewContent ? isPreviewing : undefined}
+                    disabled={!hasPreviewContent}
                     onMouseEnter={() => hasPreviewContent && setPreviewKey(k)}
                     onMouseLeave={() => setPreviewKey((cur) => (cur === k ? null : cur))}
+                    onFocus={() => hasPreviewContent && setPreviewKey(k)}
+                    onBlur={() => setPreviewKey((cur) => (cur === k ? null : cur))}
                     onClick={() => hasPreviewContent && setPreviewKey((cur) => (cur === k ? null : k))}
-                    style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "3px 0", borderRadius: 6, border: isToday ? "1px solid #E8792B" : "1px solid transparent", cursor: hasPreviewContent ? "pointer" : "default" }}
+                    style={{ width: "100%", minHeight: 44, background: "none", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "3px 0", borderRadius: 6, border: isToday ? "1px solid #E8792B" : "1px solid transparent", cursor: hasPreviewContent ? "pointer" : "default", font: "inherit" }}
                   >
-                    <span style={{ fontSize: 14, color: "#F4F3EF" }}>{d.getDate()}</span>
-                    <div style={{ display: "flex", gap: 2 }}>
+                    <span style={{ fontSize: 14, color: hasPreviewContent ? "#F4F3EF" : "#868A85" }}>{d.getDate()}</span>
+                    <span style={{ display: "flex", gap: 2, height: 5 }} aria-hidden="true">
                       {info && (
-                        <div style={{ width: 5, height: 5, borderRadius: "50%", background: info.status === "skipped" ? "transparent" : dotColor[info.status], border: info.status === "skipped" ? "1px solid #5c5f5c" : "none" }} />
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: info.status === "skipped" ? "transparent" : dotColor[info.status], border: info.status === "skipped" ? "1px solid #868A85" : "none" }} />
                       )}
-                      {hasAdHoc && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#FFD400" }} />}
-                    </div>
-                  </div>
+                      {hasAdHoc && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#FFD400" }} />}
+                    </span>
+                  </button>
                   {isPreviewing && hasPreviewContent && (
                     <div style={{ position: "absolute", zIndex: 20, bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 6, width: 160, background: "#0d0d0d", border: "1px solid #2b2b2b", borderRadius: 8, padding: "8px 10px", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}>
                       {info && (
@@ -1371,7 +1497,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                       )}
                       {hasAdHoc && adHocForDay.map((r, i) => (
                         <div key={i} style={{ marginTop: info || i > 0 ? 6 : 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: "#FFD400" }}>Extra ride{r.mins ? ` — ${r.mins}m` : ""}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#FFD400" }}>Extra ride{r.mins ? `, ${r.mins}m` : ""}</div>
                           {r.feeling && <div style={{ fontSize: 13, color: "#B9BDB8", lineHeight: 1.4 }}>{r.feeling}</div>}
                         </div>
                       ))}
@@ -1380,7 +1506,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
                 </div>
               );
             })}
-            <div style={{ width: 34, textAlign: "center", fontSize: 13, fontWeight: 600, color: rowMins > 0 ? "#1B8A82" : "#3a3d3a" }}>
+            <div style={{ width: 34, textAlign: "center", fontSize: 13, fontWeight: 600, color: rowMins > 0 ? "#1B8A82" : "#868A85" }} aria-label={rowMins > 0 ? `${rowMins} minutes this week` : "No minutes this week"}>
               {rowMins > 0 ? `${rowMins}m` : "–"}
             </div>
           </div>
@@ -1398,7 +1524,7 @@ function MonthCalendar({ weeks, sessionLog, adHocLog, programStart, totalRidesLo
   );
 }
 
-const monthNavBtn = { background: "none", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 6, width: 28, height: 28, fontSize: 16, cursor: "pointer", lineHeight: 1 };
+const monthNavBtn = { background: "none", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, width: 44, height: 44, minHeight: 44, fontSize: 22, cursor: "pointer", lineHeight: 1, padding: 0 };
 
 const FEELINGS = ["Easier than expected", "About right", "Tougher than expected", "Had to stop early"];
 // A skipped session is logged under this key whatever the button said, so streaks, badges and the calendar agree.
@@ -1422,14 +1548,19 @@ const STORAGE_KEY = "sofaToSingletrack:progress";
 const RIDERS_KEY = "sofaToSingletrack:riders";
 const MAX_RIDERS = 8;
 const keyForRider = (id) => (id === "main" ? STORAGE_KEY : STORAGE_KEY + ":" + id);
+// A device that already holds progress under the original key keeps "main" for it (nothing is migrated); a fresh device
+// mints a random id for its first rider, so two people's "main" copies can never collide on one account.
 function loadRiderIndex() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(RIDERS_KEY) || "null");
-    if (parsed && Array.isArray(parsed.riders) && parsed.riders.length > 0 && parsed.riders.some((r) => r.id === parsed.active)) return parsed;
-  } catch (e) { /* fall through to the default */ }
-  return { active: "main", riders: [{ id: "main", name: "" }] };
+    const parsed = normaliseRiderIndex(JSON.parse(localStorage.getItem(RIDERS_KEY) || "null"));
+    if (parsed) return parsed;
+  } catch (e) { /* fall through to a fresh index */ }
+  let hasLegacy = false;
+  try { hasLegacy = !!localStorage.getItem(STORAGE_KEY); } catch (e) { /* storage unavailable */ }
+  const fresh = freshRiderIndex(hasLegacy);
+  try { localStorage.setItem(RIDERS_KEY, JSON.stringify(fresh)); } catch (e) { /* storage unavailable: the id lives for this session only */ }
+  return fresh;
 }
-const newRiderId = () => Math.random().toString(36).slice(2, 8);
 
 // A complete, empty snapshot for a new rider, so switching to them clears every trace of the previous rider.
 // ageBand is "under14" (Sofa to Singletrack Juniors, with a grown-up) or "14plus" (the adult plans); junior follows it.
@@ -1439,8 +1570,8 @@ function blankSaved(name) {
   return {
     profile: { ...BLANK_PROFILE, name: name || "" },
     weeks: defaultPlan(), planVersion: PLAN_VERSION,
-    sessionLog: {}, badges: [], adHocLog: [], notifAsked: false, notifEnabled: false, reminderTime: "17:30", lastFeeling: null,
-    programStart: new Date().toISOString(), sessionDurations: {}, activeTimer: null, adjustmentMins: 0, stage: "onboarding",
+    sessionLog: {}, clearedLog: {}, badges: [], adHocLog: [], notifAsked: false, notifEnabled: false, reminderTime: "17:30", lastFeeling: null,
+    programStart: new Date().toISOString(), sessionDurations: {}, activeTimer: null, stage: "onboarding",
     lastActivityAt: null, comebackNudgeShown: false, raceOfferShown: false, savedAt: 0, continuedFrom: null,
   };
 }
@@ -1463,14 +1594,20 @@ export default function SofaToSingletrack() {
   const [fitnessConfirmed, setFitnessConfirmed] = useState(false);
   const [badges, setBadges] = useState([]);
   const [sessionLog, setSessionLog] = useState({}); // "wN-i" -> feeling
+  // "wN-i" -> when (ms) a logged session was cleared, or a skip undone, so the account merge never brings it back.
+  const [clearedLog, setClearedLog] = useState({});
   const [lastFeeling, setLastFeeling] = useState(null);
-  const [adjustmentMins, setAdjustmentMins] = useState(0);
-  const [adjustWarning, setAdjustWarning] = useState(null);
   const [checkinTarget, setCheckinTarget] = useState(null);
+  const [cancelAsk, setCancelAsk] = useState(false); // the timer's Cancel asks before throwing the time away
+  const [timerSettingsOpen, setTimerSettingsOpen] = useState(() => {
+    try { return localStorage.getItem(TIMER_SETTINGS_KEY) === "open"; } catch (e) { return false; }
+  });
+  // "Keep my dates" on the missed-weeks card: the week number it was pressed in, so the card stays away until another week passes.
+  const [keepDatesWeek, setKeepDatesWeek] = useState(null);
   const [adHocLog, setAdHocLog] = useState([]); // [{ week, at }]
   const [sessionDurations, setSessionDurations] = useState({}); // "wN-i" -> actual mins, from the ride timer
   const [activeTimer, setActiveTimer] = useState(null); // { key, startedAt, mode, targetMins } while a ride timer is running
-  const [timerMode, setTimerMode] = useState("up"); // "up" | "down" — chosen before starting
+  const [timerMode, setTimerMode] = useState("up"); // "up" | "down", chosen before starting
   const [timerAlerted, setTimerAlerted] = useState(false); // has the countdown-complete alert fired yet
   const [nowTick, setNowTick] = useState(Date.now());
   const [notifAsked, setNotifAsked] = useState(false);
@@ -1482,8 +1619,8 @@ export default function SofaToSingletrack() {
   const [raceOfferShown, setRaceOfferShown] = useState(false); // has the one-time race-discount banner ever fired
   const [showRaceOffer, setShowRaceOffer] = useState(false);
   const [explainerOpen, setExplainerOpen] = useState(false);
-  const [toast, setToast] = useState("");
-  const [toastType, setToastType] = useState("info"); // "info" | "trophy"
+  const [toast, setToast] = useState(null); // { text, action?: { label, onClick } }
+  const [toastType, setToastType] = useState("info"); // "info" | "trophy" | "undo"
   const [confettiKey, setConfettiKey] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -1523,12 +1660,33 @@ export default function SofaToSingletrack() {
   // device and the account both have progress, so simply opening the app on a second phone never overwrites the first.
   const modifiedAtRef = useRef(0);
   const suppressBumpUntilRef = useRef(0); // applying a saved copy is not a change made by the rider
+  // Set when a localStorage write throws: this browser is not keeping progress, and the dashboard says so.
+  const [storageBroken, setStorageBroken] = useState(false);
+  const writeItem = (key, value) => {
+    try { localStorage.setItem(key, value); return true; } catch (e) { setStorageBroken(true); return false; }
+  };
+  const readItem = (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } };
   const [riderIndex, setRiderIndex] = useState(loadRiderIndex);
+  const riderIndexRef = useRef(riderIndex);
+  riderIndexRef.current = riderIndex;
   const persistIndex = (next) => {
+    riderIndexRef.current = next;
     setRiderIndex(next);
-    try { localStorage.setItem(RIDERS_KEY, JSON.stringify(next)); } catch (e) { /* storage unavailable */ }
+    writeItem(RIDERS_KEY, JSON.stringify(next));
   };
   const firstSaveRef = useRef(true);
+  // What the account knows: "connecting" until the first answer, then saved / pending / offline / signedOut / removed.
+  const [syncState, setSyncState] = useState({ status: "connecting", at: 0 });
+  const accountRef = useRef(null);
+  // The sync machinery lives on refs so the window listeners (online, focus, visibility) always call the latest version.
+  const syncRef = useRef({ inFlight: false, lastGetAt: 0, pending: null, attempt: 0, timer: null, stopped: new Set() });
+  const actionsRef = useRef({});
+  const syncReadyRef = useRef(false);
+  syncReadyRef.current = syncReady;
+  // The log fields as they are right now, for merging an account answer that arrives after a render.
+  const stateRef = useRef({});
+  stateRef.current = { sessionLog, sessionDurations, clearedLog, badges, adHocLog, programStart };
+  const restoringRef = useRef(false); // a Restore is being written and pushed: nothing else may touch the live copy until the reload
   const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 
   useEffect(() => {
@@ -1553,8 +1711,10 @@ export default function SofaToSingletrack() {
     setDeferredPrompt(null);
   };
 
-  // Puts a saved snapshot (from this device or from the account) into the app.
-  const applySaved = (saved) => {
+  // Puts a saved snapshot (from this device, a backup or the account) into the app. Anything that is not already a blank
+  // snapshot goes through normaliseSaved first, so a half-written or hand-edited copy can never leave a field the wrong shape.
+  const applySaved = (input) => {
+    const saved = normaliseSaved(input, blankSaved("")) || blankSaved("");
     modifiedAtRef.current = saved.savedAt || 0;
     suppressBumpUntilRef.current = Date.now() + 1000;
     setShowComebackNudge(false);
@@ -1570,28 +1730,31 @@ export default function SofaToSingletrack() {
     // A saved programme's weeks are kept exactly as saved, whatever version built them. A programme saved before
     // planVersion 2 used session copy that no longer exists in the plan tables, so rebuilding it would scramble its
     // log; its old Easy / Moderate / Hard efforts show as Chatting / Breathing / Can't talk through the same keys.
+    // A copy still in setup may have no weeks yet: it gets the default plan rather than the previous rider's weeks.
     const savedWeeks = weeksFromSaved(saved);
-    if (savedWeeks) setWeeks(savedWeeks);
-    setPlanVersion(Number.isInteger(saved.planVersion) ? saved.planVersion : 1);
-    if (saved.sessionLog) setSessionLog(saved.sessionLog);
-    if (saved.badges) setBadges(saved.badges);
-    if (Array.isArray(saved.adHocLog)) setAdHocLog(saved.adHocLog);
-    if (typeof saved.notifAsked === "boolean") setNotifAsked(saved.notifAsked);
-    if (typeof saved.notifEnabled === "boolean") setNotifEnabled(saved.notifEnabled);
-    if (saved.reminderTime) setReminderTime(saved.reminderTime);
-    if (typeof saved.lastFeeling !== "undefined") setLastFeeling(saved.lastFeeling);
+    setWeeks(savedWeeks || defaultPlan());
+    setPlanVersion(saved.planVersion);
+    setSessionLog(saved.sessionLog);
+    setBadges(saved.badges);
+    setAdHocLog(saved.adHocLog);
+    setNotifAsked(saved.notifAsked);
+    setNotifEnabled(saved.notifEnabled);
+    setReminderTime(saved.reminderTime);
+    setLastFeeling(saved.lastFeeling);
     if (saved.programStart) setProgramStart(new Date(saved.programStart));
-    setContinuedFrom(typeof saved.continuedFrom === "string" && saved.continuedFrom ? saved.continuedFrom : null);
-    if (saved.sessionDurations) setSessionDurations(saved.sessionDurations);
-    setActiveTimer(saved.activeTimer || null);
-    if (typeof saved.adjustmentMins === "number") setAdjustmentMins(saved.adjustmentMins);
+    setContinuedFrom(saved.continuedFrom);
+    setSessionDurations(saved.sessionDurations);
+    setClearedLog(saved.clearedLog);
+    setActiveTimer(saved.activeTimer);
+    setCancelAsk(false);
+    setKeepDatesWeek(null);
     // A reload mid check-in lands back on the dashboard, never on the welcome screen: before this, leaving the stage
     // at its initial "welcome" meant the next save wrote that back, and the rider reopened the app to the intro page
     // as if their programme had gone.
     if (saved.stage) setStage(saved.stage === "checkin" ? "dashboard" : saved.stage);
     setLastActivityAt(typeof saved.lastActivityAt === "number" ? saved.lastActivityAt : null);
 
-    // One-time "the bike misses you" nudge — never repeats once shown, so
+    // One-time "the bike misses you" nudge: never repeats once shown, so
     // it doesn't turn into a nag. Fires the first time someone reopens the
     // app 14+ days after their last logged ride (or since starting, if
     // they never got one logged at all).
@@ -1602,7 +1765,7 @@ export default function SofaToSingletrack() {
     }
     setComebackNudgeShown(alreadyShown || (!!baseline && saved.stage === "dashboard" && Date.now() - baseline >= 14 * 24 * 60 * 60 * 1000));
 
-    // One-time "fancy a race?" nudge — fires once someone is 2+ weeks into
+    // One-time "fancy a race?" nudge: fires once someone is 2+ weeks into
     // their programme, then never again regardless of how long they stick around.
     const raceAlreadyShown = !!saved.raceOfferShown;
     const startMs = saved.programStart ? new Date(saved.programStart).getTime() : null;
@@ -1611,28 +1774,36 @@ export default function SofaToSingletrack() {
     setRaceOfferShown(raceAlreadyShown || raceEligible);
   };
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(keyForRider(riderIndex.active));
-      if (raw) applySaved(JSON.parse(raw));
-    } catch (e) {
-      // no saved progress yet, or storage unavailable
+  // Loads what this device holds for a rider. A copy that claims to be on the dashboard but has no programme in it
+  // starts blank, and the raw text is kept under ":backup" (unless a backup is already there) so nothing is lost.
+  const applyStored = (key, raw, fallbackName) => {
+    const blank = blankSaved(fallbackName || "");
+    const safe = raw ? normaliseSaved(raw, blank) : null;
+    if (!safe) { applySaved(blank); return; }
+    if (needsBlankFallback(safe)) {
+      if (!readItem(key + ":backup")) writeItem(key + ":backup", typeof raw === "string" ? raw : JSON.stringify(raw));
+      applySaved(blank);
+      return;
     }
+    applySaved(safe);
+  };
+
+  useEffect(() => {
+    const raw = readItem(keyForRider(riderIndex.active));
+    if (raw) applyStored(keyForRider(riderIndex.active), raw, "");
     setLoaded(true);
   }, []);
 
-  const buildPayload = () => ({ profile, weeks, planVersion, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), continuedFrom, savedAt: modifiedAtRef.current, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown });
+  const buildPayload = () => ({ profile, weeks, planVersion, sessionLog, clearedLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart: programStart.toISOString(), continuedFrom, savedAt: modifiedAtRef.current, sessionDurations, activeTimer, stage, lastActivityAt, comebackNudgeShown, raceOfferShown });
 
   useEffect(() => {
     if (!loaded) return;
     if (firstSaveRef.current) firstSaveRef.current = false;
     else if (Date.now() > suppressBumpUntilRef.current) modifiedAtRef.current = Date.now();
-    try {
-      localStorage.setItem(keyForRider(riderIndex.active), JSON.stringify(buildPayload()));
-    } catch (e) {
-      // storage unavailable (private browsing, quota) — progress just won't persist
-    }
-  }, [loaded, riderIndex.active, profile, weeks, planVersion, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
+    if (restoringRef.current) return;
+    // A failed write (private browsing, quota) sets storageBroken, and the dashboard banner says so.
+    writeItem(keyForRider(riderIndex.active), JSON.stringify(buildPayload()));
+  }, [loaded, riderIndex.active, profile, weeks, planVersion, sessionLog, clearedLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
 
   // The rider's name on the switcher follows what they type in setup.
   useEffect(() => {
@@ -1736,77 +1907,304 @@ export default function SofaToSingletrack() {
     return () => { cancelled = true; };
   }, [account]);
 
-  const pushRider = (id, name, payload) =>
-    fetch("/api/programme/progress", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ riderId: id, name: name || "", data: payload }) }).catch(() => {});
+  // Keeps a ref of the account so the sync machinery (which runs from window events) sees the latest answer.
+  useEffect(() => { accountRef.current = account; }, [account]);
 
-  // On sign-in, reconcile this device with the account's saved progress, rider by rider: the newer copy wins, and an older
-  // copy on the device is kept as a backup rather than thrown away. Riders the account has that this device doesn't are
-  // added here; riders on this device the account doesn't have yet are saved to it.
-  useEffect(() => {
-    if (!loaded || !account || !account.signedIn) return;
-    let cancelled = false;
-    (async () => {
+  const signedIn = () => !!(accountRef.current && accountRef.current.signedIn);
+
+  // The website said the session has gone: stop saving, say so on the account card, keep working from this device.
+  const handleSignedOut = () => {
+    setAccount({ signedIn: false, name: "" });
+    setSyncReady(false);
+    setSyncState({ status: "signedOut", at: Date.now() });
+  };
+
+  const recordSaved = (id, at) => {
+    persistIndex(withLastSaved(riderIndexRef.current, id, at));
+    if (id === riderIndexRef.current.active) setSyncState({ status: "saved", at });
+  };
+
+  // The account's merged copy of a rider folded back into this device: only the logs, badges and off-plan rides move
+  // (never the stage, weeks, programme start or where the rider is on screen). For the active rider that is a state
+  // update with the savedAt bump suppressed; for anyone else it is their stored copy.
+  const mergeIntoRider = (id, remoteData) => {
+    const remote = normaliseSaved(remoteData, blankSaved(""));
+    if (!remote) return;
+    if (id === riderIndexRef.current.active) {
+      if (restoringRef.current) return;
+      const current = stateRef.current;
+      if (remote.programStart && current.programStart.toISOString() !== remote.programStart) return; // a different programme: left to the next full reconcile
+      const merged = mergeLogs({ ...current, savedAt: modifiedAtRef.current }, remote);
+      if (!merged.changed) return;
+      suppressBumpUntilRef.current = Date.now() + 1000;
+      setSessionLog(merged.sessionLog);
+      setSessionDurations(merged.sessionDurations);
+      setClearedLog(merged.clearedLog);
+      setBadges(merged.badges);
+      setAdHocLog(merged.adHocLog);
+      return;
+    }
+    const key = keyForRider(id);
+    const local = normaliseSaved(readItem(key), blankSaved(""));
+    if (!local) { writeItem(key, JSON.stringify(remote)); return; }
+    if (local.programStart !== remote.programStart) return;
+    const merged = mergeLogs(local, remote);
+    if (merged.changed) writeItem(key, JSON.stringify({ ...local, sessionLog: merged.sessionLog, sessionDurations: merged.sessionDurations, clearedLog: merged.clearedLog, badges: merged.badges, adHocLog: merged.adHocLog }));
+  };
+
+  // One rider's copy up to the account. Resolves to { ok, status }; the caller decides whether to retry.
+  const pushRider = async (id, name, payload) => {
+    if (isRemovedRider(riderIndexRef.current, id) || syncRef.current.stopped.has(id)) return { ok: false, status: 410 };
+    let res;
+    try {
+      res = await fetch("/api/programme/progress", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ riderId: id, name: name || "", data: payload }) });
+    } catch (e) {
+      return { ok: false, status: 0 };
+    }
+    if (res.status === 401) { handleSignedOut(); return { ok: false, status: 401 }; }
+    if (res.status === 410) {
+      // Removed on another device: nothing more goes up for this rider. The next GET tidies the device's copy.
+      syncRef.current.stopped.add(id);
+      showToast("This rider was removed on another device");
+      if (id === riderIndexRef.current.active) setSyncState({ status: "removed", at: Date.now() });
+      return { ok: false, status: 410 };
+    }
+    if (!res.ok) return { ok: false, status: res.status };
+    let json = null;
+    try { json = await res.json(); } catch (e) { json = null; }
+    if (json && json.merged && json.data) mergeIntoRider(id, json.data);
+    recordSaved(id, Date.now());
+    return { ok: true, status: 200 };
+  };
+
+  // The debounced push of the active rider, with the retry ladder: anything that fails for a reason other than
+  // "signed out" or "removed" stays pending and goes again on online/focus or after 10 s, 30 s, 2 min, then 10 min.
+  const attemptPush = async () => {
+    const sync = syncRef.current;
+    clearTimeout(sync.timer);
+    sync.timer = null;
+    const job = sync.pending;
+    if (!job || !signedIn()) return;
+    sync.pending = null;
+    const result = await pushRider(job.id, job.name, job.payload);
+    if (result.ok) { sync.attempt = 0; return; }
+    if (result.status === 401 || result.status === 410) return;
+    if (result.status === 400 || result.status === 413) {
+      // Too many riders or too big: trying the same copy again will not help. The card says it is not saved.
+      if (job.id === riderIndexRef.current.active) setSyncState({ status: "pending", at: Date.now() });
+      return;
+    }
+    if (!sync.pending) sync.pending = job; // nothing newer queued meanwhile: keep this one for the retry
+    if (job.id === riderIndexRef.current.active) setSyncState({ status: "pending", at: Date.now() });
+    sync.timer = setTimeout(() => actionsRef.current.attemptPush(), retryDelay(sync.attempt));
+    sync.attempt += 1;
+  };
+
+  const queuePush = (id, name, payload, delayMs) => {
+    const sync = syncRef.current;
+    sync.pending = { id, name, payload };
+    clearTimeout(sync.timer);
+    sync.timer = setTimeout(() => actionsRef.current.attemptPush(), delayMs);
+  };
+
+  // Straight away, no debounce: used when a rider is switched away from, added, or restored from a backup.
+  const pushNow = (id, name, payload) => {
+    const sync = syncRef.current;
+    if (sync.pending && sync.pending.id === id) { sync.pending = null; clearTimeout(sync.timer); sync.timer = null; }
+    if (!signedIn()) return Promise.resolve({ ok: false, status: 0 });
+    return pushRider(id, name, payload).then((result) => {
+      if (!result.ok && result.status !== 401 && result.status !== 410) {
+        sync.pending = sync.pending || { id, name, payload };
+        if (id === riderIndexRef.current.active) setSyncState({ status: "pending", at: Date.now() });
+        if (!sync.timer) sync.timer = setTimeout(() => actionsRef.current.attemptPush(), retryDelay(sync.attempt));
+      }
+      return result;
+    });
+  };
+
+  // A rider removed on this device whose DELETE did not reach the account: tried again when the connection is back.
+  const retryDeletes = async () => {
+    const index = riderIndexRef.current;
+    if (!signedIn()) return;
+    for (const r of (index.removed || []).filter((x) => x.pendingDelete)) {
       try {
-        const res = await fetch("/api/programme/progress", { credentials: "same-origin" });
-        if (!res.ok) return;
-        const { riders: remote } = await res.json();
-        if (cancelled) return;
-        let index = loadRiderIndex();
-        let appliedActive = false;
-        let addedOthers = false;
-        const remoteIds = new Set();
-        for (const r of remote || []) {
-          remoteIds.add(r.riderId);
-          const key = keyForRider(r.riderId);
-          const localRaw = localStorage.getItem(key);
-          const local = localRaw ? JSON.parse(localRaw) : null;
-          const decision = decideSync(local, r.data);
-          if (decision.action === "useAccount") {
-            if (decision.keepBackup) localStorage.setItem(key + ":backup", localRaw);
-            if (r.riderId === index.active) { applySaved(r.data); appliedActive = true; }
-            else { localStorage.setItem(key, JSON.stringify(r.data)); addedOthers = true; }
-            if (!index.riders.some((x) => x.id === r.riderId)) index = { ...index, riders: [...index.riders, { id: r.riderId, name: r.name || (r.data && r.data.profile && r.data.profile.name) || "" }] };
-          } else if (decision.action === "saveToAccount") {
-            await pushRider(r.riderId, r.name || (local && local.profile && local.profile.name) || "", local);
+        const res = await fetch("/api/programme/progress", { method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ riderId: r.id }) });
+        if (res.status === 401) { handleSignedOut(); return; }
+        if (res.ok || res.status === 404 || res.status === 410) persistIndex(confirmRemoved(riderIndexRef.current, [r.id]));
+      } catch (e) { /* still offline: next time */ }
+    }
+  };
+
+  // Reconciles this device with the account, rider by rider. The first run (initial) may replace the active rider's
+  // copy outright, which is why it happens before the rider has done anything; a later run (a tablet left open while
+  // the phone logged a ride) only folds merged logs into the active rider and never moves them off their screen.
+  const reconcile = async ({ initial }) => {
+    const sync = syncRef.current;
+    if (!signedIn() || sync.inFlight) return;
+    sync.inFlight = true;
+    try {
+      let res;
+      try {
+        res = await fetch("/api/programme/progress", { credentials: "same-origin" });
+      } catch (e) {
+        setSyncState((s) => (s.status === "connecting" || s.status === "saved" ? { status: "offline", at: Date.now() } : s));
+        return;
+      }
+      if (res.status === 401) { handleSignedOut(); return; }
+      if (!res.ok) { setSyncState((s) => (s.status === "connecting" || s.status === "saved" ? { status: "offline", at: Date.now() } : s)); return; }
+      let json;
+      try { json = await res.json(); } catch (e) { setSyncState((s) => (s.status === "connecting" ? { status: "offline", at: Date.now() } : s)); return; }
+      const remote = Array.isArray(json && json.riders) ? json.riders : [];
+      const removedIds = Array.isArray(json && json.removed) ? json.removed.filter((x) => typeof x === "string") : [];
+      const blank = blankSaved("");
+      let index = riderIndexRef.current;
+      let appliedActive = false;
+      let addedOthers = false;
+
+      // 1. Riders removed on another device go from this one too.
+      if (removedIds.length > 0) {
+        index = confirmRemoved(index, removedIds);
+        const { index: next, dropped, activeChanged } = dropRiders(index, removedIds);
+        if (dropped.length > 0) {
+          for (const r of dropped) { try { localStorage.removeItem(keyForRider(r.id)); localStorage.removeItem(keyForRider(r.id) + ":backup"); } catch (e) { /* storage unavailable */ } }
+          index = next;
+          if (activeChanged) { loadRider(index.active, (index.riders.find((r) => r.id === index.active) || {}).name); setStep(0); }
+          persistIndex(index);
+          showToast(`${dropped.map((r) => r.name || "A rider").join(", ")} ${dropped.length === 1 ? "was" : "were"} removed on another device`);
+        }
+      }
+
+      // 2. Two different people both saved as "main" (this device's first rider and the account's): the device copy
+      //    gets its own id and goes up as a new rider; the account's "main" joins this device as another rider.
+      if (initial) {
+        const serverMain = remote.find((r) => r.riderId === "main");
+        const localMainRaw = readItem(STORAGE_KEY);
+        const localMain = localMainRaw ? normaliseSaved(localMainRaw, blank) : null;
+        const serverMainName = serverMain ? serverMain.name || (serverMain.data && serverMain.data.profile && serverMain.data.profile.name) : "";
+        if (serverMain && localMain && shouldSplitMain(index, localMain.profile.name, serverMainName)) {
+          const newId = newRiderId();
+          if (writeItem(keyForRider(newId), localMainRaw)) {
+            const backupRaw = readItem(STORAGE_KEY + ":backup");
+            if (backupRaw) writeItem(keyForRider(newId) + ":backup", backupRaw);
+            try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(STORAGE_KEY + ":backup"); } catch (e) { /* storage unavailable */ }
+            index = renameRider(index, "main", newId);
+            persistIndex(index);
+            await pushRider(newId, localMain.profile.name, localMain);
           }
         }
-        for (const rider of index.riders) {
-          if (remoteIds.has(rider.id)) continue;
-          const raw = localStorage.getItem(keyForRider(rider.id));
-          if (!raw) continue;
-          const local = JSON.parse(raw);
-          if (decideSync(local, null).action === "saveToAccount") await pushRider(rider.id, rider.name || (local.profile && local.profile.name) || "", local);
-        }
-        persistIndex(index);
-        if (appliedActive) showToast("Your saved progress has been loaded");
-        else if (addedOthers) showToast("Your family's saved progress has been loaded");
-      } catch (e) {
-        // offline or not available: the app carries on with what's on the device
-      } finally {
-        if (!cancelled) setSyncReady(true);
       }
-    })();
-    return () => { cancelled = true; };
+
+      // 3. Every rider the account holds.
+      let deleteLater = false;
+      for (const r of remote) {
+        if (!r || typeof r.riderId !== "string") continue;
+        if (isRemovedRider(index, r.riderId)) {
+          // Removed on this device (while signed out, say) but still on the account: the DELETE goes after this pass.
+          index = markRemoved(index, r.riderId, (index.removed.find((x) => x.id === r.riderId) || {}).at || Date.now(), true);
+          deleteLater = true;
+          continue;
+        }
+        const key = keyForRider(r.riderId);
+        const localRaw = readItem(key);
+        const local = localRaw ? normaliseSaved(localRaw, blank) : null;
+        const server = normaliseSaved(r.data, blank);
+        const isActive = r.riderId === index.active;
+        if (!index.riders.some((x) => x.id === r.riderId)) {
+          index = { ...index, riders: [...index.riders, { id: r.riderId, name: r.name || (server && server.profile.name) || "" }] };
+        }
+        if (isActive && !initial) {
+          // A re-check never moves the rider off their screen: logs only.
+          if (server) mergeIntoRider(r.riderId, server);
+          continue;
+        }
+        const decision = decideSync(local, server);
+        if (decision.action === "useAccount" && server) {
+          if (decision.keepBackup && localRaw) writeItem(key + ":backup", localRaw);
+          if (isActive) {
+            if (needsBlankFallback(server)) { if (!readItem(key + ":backup")) writeItem(key + ":backup", JSON.stringify(r.data)); }
+            else { applySaved(server); appliedActive = true; }
+          } else {
+            writeItem(key, JSON.stringify(server));
+            addedOthers = true;
+          }
+        } else if (decision.action === "saveToAccount" && local) {
+          await pushRider(r.riderId, r.name || local.profile.name || "", local);
+        }
+      }
+
+      // 4. Riders this device has that the account does not.
+      const remoteIds = new Set(remote.map((r) => r && r.riderId));
+      for (const rider of index.riders) {
+        if (remoteIds.has(rider.id) || isRemovedRider(index, rider.id)) continue;
+        const local = normaliseSaved(readItem(keyForRider(rider.id)), blank);
+        if (!local) continue;
+        if (decideSync(local, null).action === "saveToAccount") await pushRider(rider.id, rider.name || local.profile.name || "", local);
+      }
+      // Save times recorded by pushes during this pass live on the ref's index, not this local copy: keep them.
+      const latest = riderIndexRef.current;
+      index = { ...index, riders: index.riders.map((r) => { const cur = latest.riders.find((x) => x.id === r.id); return cur && cur.lastSavedAt ? { ...r, lastSavedAt: cur.lastSavedAt } : r; }) };
+      persistIndex(index);
+      sync.lastGetAt = Date.now();
+      setSyncReady(true);
+      if (deleteLater) actionsRef.current.retryDeletes();
+      // In step with the account as of now; a push still waiting keeps its own status and goes next.
+      if (sync.pending) actionsRef.current.attemptPush();
+      else setSyncState((s) => (s.status === "removed" ? s : { status: "saved", at: Date.now() }));
+      if (initial && appliedActive) showToast("Your saved progress has been loaded");
+      else if (initial && addedOthers) showToast("Your family's saved progress has been loaded");
+    } finally {
+      sync.inFlight = false;
+    }
+  };
+
+  // The latest versions of the sync actions, for the window listeners and timers.
+  actionsRef.current = { reconcile, attemptPush, retryDeletes };
+
+  // On sign-in, reconcile this device with the account's saved progress.
+  useEffect(() => {
+    if (!loaded || !account || !account.signedIn) return;
+    actionsRef.current.reconcile({ initial: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, account]);
+
+  // Coming back online or back to the app: finish anything that failed, and re-check the account if it has been a
+  // while (so a tablet left open picks up the phone's rides).
+  useEffect(() => {
+    const wake = () => {
+      if (document.visibilityState === "hidden") return;
+      const sync = syncRef.current;
+      if (!signedIn()) return;
+      if (!syncReadyRef.current) actionsRef.current.reconcile({ initial: true });
+      else if (Date.now() - sync.lastGetAt > 60000) actionsRef.current.reconcile({ initial: false });
+      if (sync.pending) actionsRef.current.attemptPush();
+      actionsRef.current.retryDeletes();
+    };
+    window.addEventListener("online", wake);
+    window.addEventListener("focus", wake);
+    document.addEventListener("visibilitychange", wake);
+    return () => {
+      window.removeEventListener("online", wake);
+      window.removeEventListener("focus", wake);
+      document.removeEventListener("visibilitychange", wake);
+    };
+  }, []);
 
   // While signed in, keep the account copy of the current rider up to date (a couple of seconds after the last change).
   useEffect(() => {
     if (!loaded || !syncReady || !account || !account.signedIn) return;
-    const t = setTimeout(() => pushRider(riderIndex.active, profile.name, buildPayload()), 2000);
-    return () => clearTimeout(t);
+    queuePush(riderIndex.active, profile.name, buildPayload(), 2000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, syncReady, account, riderIndex.active, profile, weeks, planVersion, sessionLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, adjustmentMins, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
+  }, [loaded, syncReady, account, riderIndex.active, profile, weeks, planVersion, sessionLog, clearedLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
 
   // A signed-in rider doesn't have to type their name again.
   useEffect(() => {
-    if (account && account.signedIn && account.name && !profile.name && riderIndex.active === "main" && riderIndex.riders.length === 1 && (stage === "welcome" || stage === "onboarding")) {
+    if (account && account.signedIn && account.name && !profile.name && riderIndex.riders.length === 1 && (stage === "welcome" || stage === "onboarding")) {
       setProfile((p) => (p.name ? p : { ...p, name: account.name }));
     }
   }, [account, stage, profile.name]);
 
   useEffect(() => { if (stage === "onboarding" && nameRef.current) nameRef.current.focus(); }, [stage, step]);
-  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), toastType === "trophy" ? 4200 : 3000); return () => clearTimeout(t); }, [toast, toastType]);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), toastType === "trophy" ? 4200 : toastType === "undo" ? 6000 : 3000); return () => clearTimeout(t); }, [toast, toastType]);
   useEffect(() => { const t = setTimeout(() => setShowSplash(false), reduceMotion ? 0 : 1600); return () => clearTimeout(t); }, []);
   useEffect(() => {
     if (!activeTimer) return;
@@ -1836,8 +2234,9 @@ export default function SofaToSingletrack() {
   );
   const unlogged = allSessions.filter((s) => !(s.key in sessionLog));
   const nextSession = unlogged[0] || null;
-  const nextSessionEffective = nextSession ? effectiveSession(nextSession.session, adjustmentMins) : null;
+  const nextSessionEffective = nextSession ? effectiveSession(nextSession.session) : null;
   const upcoming = unlogged.slice(1, 3);
+  const justLogged = recentlyLogged(allSessions, sessionLog, 2); // newest first, for the Change links
   const currentWeekN = nextSession ? nextSession.weekN : weeks[weeks.length - 1].n;
   const currentWeek = weeks.find((w) => w.n === currentWeekN) || null;
   const programmeComplete = unlogged.length === 0;
@@ -1848,7 +2247,7 @@ export default function SofaToSingletrack() {
 
   // A week counts as "engaged" if it has at least one real (non-skip) session log,
   // or an ad-hoc ride logged during it. Streak = consecutive engaged weeks counting
-  // back from the current week — a single skip doesn't break it, but a week with
+  // back from the current week: a single skip doesn't break it, but a week with
   // nothing logged at all does.
   const weekEngaged = (weekN) => {
     const hasStructured = weeks.find((w) => w.n === weekN)?.sessions.some((_, i) => sessionLog[`${weekN}-${i}`] && sessionLog[`${weekN}-${i}`] !== "Didn't get to it");
@@ -1867,7 +2266,7 @@ export default function SofaToSingletrack() {
   const adHocMinutesRidden = adHocLog.reduce((sum, r) => sum + (r.mins || 0), 0);
   const totalMinutesRidden = allSessions.reduce((sum, s) => sum + (sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it" ? (sessionDurations[s.key] ?? s.session.mins) : 0), 0) + adHocMinutesRidden;
 
-  // Recap of the week just gone, shown on the dashboard — only surfaced when
+  // Recap of the week just gone, shown on the dashboard, only surfaced when
   // there's something to report, never to call out an empty week.
   const lastWeekN = currentWeekN - 1;
   const lastWeekStructured = allSessions.filter((s) => s.weekN === lastWeekN && sessionLog[s.key] && sessionLog[s.key] !== "Didn't get to it");
@@ -1875,7 +2274,7 @@ export default function SofaToSingletrack() {
   const lastWeekRideCount = lastWeekStructured.length + lastWeekAdHoc.length;
   const lastWeekMinutes = lastWeekStructured.reduce((sum, s) => sum + (sessionDurations[s.key] ?? s.session.mins), 0) + lastWeekAdHoc.reduce((sum, r) => sum + (r.mins || 0), 0);
 
-  // Longest run of consecutive engaged weeks across the whole programme so far —
+  // Longest run of consecutive engaged weeks across the whole programme so far,
   // distinct from streakWeeks above, which only counts the current run.
   let longestStreakWeeks = 0;
   let runningStreak = 0;
@@ -1892,7 +2291,7 @@ export default function SofaToSingletrack() {
   // (passed in directly rather than read from state, since state hasn't committed
   // yet at the point this is called) and returns any newly-earned trophy labels.
   // Compares against `badges` from closure (not a setState updater) so the result
-  // is available synchronously to the caller — setState updaters aren't guaranteed
+  // is available synchronously to the caller: setState updaters aren't guaranteed
   // to run before the next line of code, only before the next render.
   const checkAllBadges = (log, adHoc) => {
     const candidates = [];
@@ -2002,29 +2401,27 @@ export default function SofaToSingletrack() {
     setPlanVersion(PLAN_VERSION);
     setSessionLog({});
     setSessionDurations({});
+    setClearedLog({});
     setAdHocLog([]);
     setActiveTimer(null);
     setTimerAlerted(false);
+    setCancelAsk(false);
+    setKeepDatesWeek(null);
     setLastFeeling(null);
-    setAdjustmentMins(0);
     setCheckinTarget(null);
     setCoachNote("");
     setStage("dashboard");
     const first = plan[0].sessions[0];
     const welcomeTemplate = (profile.junior && COACH_SCENARIOS.junior && COACH_SCENARIOS.junior.welcome)
-      || COACH_SCENARIOS.welcome || "Welcome aboard, {name} — your first session, {sessionName}, is a gentle one on purpose.";
+      || COACH_SCENARIOS.welcome || "Welcome aboard, {name}. Your first session, {sessionName}, is a gentle one on purpose.";
     setWelcomeNote(fillTemplate(welcomeTemplate, { name: profile.name || "rider", sessionName: first.name }));
     return plan;
   };
 
+  // Everyone starts the plan as written, whatever they said about experience: the signed-off plan is one schedule
+  // and the app never adds minutes to it. A rider who finds a week easy adds five minutes themselves (Tips & advice).
   const startProgramme = () => {
     beginProgramme(weeks, { delayWeeks: profile.delayWeeks || 0 });
-    // The only place "have you ridden off-road before?" actually feeds into the
-    // plan — an already-regular rider starts one difficulty step up rather than
-    // at the same baseline as someone brand new, using the same ±5 min lever
-    // the feel-based check-ins use later. Deliberately not forking the plan
-    // itself, which stays the one canonical schedule for everyone.
-    if (!profile.junior && profile.experience === "Ridden regularly, never raced") setAdjustmentMins(ADJUSTMENT_STEP);
   };
 
   // The 8-week finisher carries on with weeks 8 to 11 of the full plan; the Taster finisher with the 8-week plan from
@@ -2065,13 +2462,12 @@ export default function SofaToSingletrack() {
 
   const openCheckin = (target) => {
     setCheckinTarget(target);
-    setAdjustWarning(null);
     setStage("checkin");
   };
 
-  const showToast = (text, type = "info") => {
+  const showToast = (text, type = "info", action = null) => {
     setToastType(type);
-    setToast(text);
+    setToast({ text, action });
   };
 
   const triggerConfetti = () => {
@@ -2088,35 +2484,21 @@ export default function SofaToSingletrack() {
   const celebrateTrophies = (justAwarded) => {
     showToast(trophyToastText(justAwarded), "trophy");
     triggerConfetti();
-    if (navigator.vibrate) navigator.vibrate([80, 40, 80]); // Android only — iOS Safari has no Vibration API
+    if (navigator.vibrate) navigator.vibrate([80, 40, 80]); // Android only: iOS Safari has no Vibration API
   };
 
-  // Difficulty adjustment: every "Tougher than expected" / "Had to stop early"
-  // trims 5 minutes off every session still to come; every "Easier than
-  // expected" adds 5. It keeps compounding report after report (clamped so a
-  // session can never vanish or balloon) until a rider reports "About right",
-  // which resets it back to zero.
-  const ADJUSTMENT_STEP = 5;
-  const ADJUSTMENT_MIN = -15;
-  const ADJUSTMENT_MAX = 15;
-
-  const applyFeelingAdjustment = (feeling) => {
-    if (junior) return null; // Juniors sessions are never lengthened or shortened
-    if (feeling === "About right") {
-      setAdjustmentMins(0);
-      return null;
-    }
-    if (feeling === "Didn't get to it") return null;
-    const delta = feeling === "Easier than expected" ? ADJUSTMENT_STEP : -ADJUSTMENT_STEP;
-    const next = Math.max(ADJUSTMENT_MIN, Math.min(ADJUSTMENT_MAX, adjustmentMins + delta));
-    setAdjustmentMins(next);
-    return delta > 0 ? "up" : "down";
-  };
-
+  // How a ride felt changes the coach note, never the plan: no session's minutes move from a feeling.
   const logSession = (target, feeling, { navigate = true } = {}) => {
-    const isFirstEver = Object.keys(sessionLog).length === 0;
+    const changing = !!target.changing;
+    const wasSkipped = changing && target.previousFeeling === SKIPPED;
+    if (changing) setCheckinTarget((t) => (t && t.key === target.key ? { ...t, changing: false } : t));
     const newLog = { ...sessionLog, [target.key]: feeling };
     setSessionLog(newLog);
+    // Logged again after a clear: the cleared marker goes, so the account merge keeps this log.
+    if (target.key in clearedLog) setClearedLog((prev) => { const next = { ...prev }; delete next[target.key]; return next; });
+    // Changing a logged session: a ride that becomes a skip loses its minutes; a skip that becomes a ride gets the
+    // planned minutes below; a timed ride whose feeling changes keeps its timed minutes.
+    if (changing && feeling === SKIPPED) setSessionDurations((prev) => { const next = { ...prev }; delete next[target.key]; return next; });
     // Logging the session that is being timed ends that timer: before this it kept running out of sight, holding the
     // screen awake and speaking the old ride's cues. Its minutes are kept as the real duration.
     let timedMins = null;
@@ -2129,22 +2511,22 @@ export default function SofaToSingletrack() {
     setLastFeeling(feeling === "Didn't get to it" ? lastFeeling : feeling);
 
     // Record what they actually just did, in case they logged manually
-    // without the timer — a real timer reading (the one just stopped above, or one
+    // without the timer: a real timer reading (the one just stopped above, or one
     // already in sessionDurations) takes priority over the planned figure.
-    if (feeling !== "Didn't get to it" && timedMins == null && !(target.key in sessionDurations)) {
-      const effectiveMins = effectiveSession(target.session, adjustmentMins).mins;
+    if (feeling !== "Didn't get to it" && timedMins == null && (wasSkipped || !(target.key in sessionDurations))) {
+      const effectiveMins = effectiveSession(target.session).mins;
       setSessionDurations((prev) => ({ ...prev, [target.key]: effectiveMins }));
     }
     if (feeling !== "Didn't get to it") setLastActivityAt(Date.now());
 
-    setAdjustWarning(applyFeelingAdjustment(feeling));
-
-    const justAwarded = checkAllBadges(newLog, adHocLog);
+    const justAwarded = checkAllBadges(newLog, adHocLog); // never awards a trophy already in the case
 
     if (justAwarded.length > 0) {
       celebrateTrophies(justAwarded);
     } else if (!navigate) {
-      showToast(feeling === "Didn't get to it" ? "No worries — logged as skipped." : "Session logged.");
+      showToast(feeling === "Didn't get to it" ? "No worries. Logged as skipped." : "Session logged.");
+    } else if (changing) {
+      showToast("Changed.");
     }
 
     if (!navigate) return;
@@ -2152,9 +2534,44 @@ export default function SofaToSingletrack() {
   };
 
   const submitCheckin = (feeling) => checkinTarget && logSession(checkinTarget, feeling, { navigate: true });
+
+  // Marks a session as cleared (not done) right now, and drops its minutes: the account merge then keeps it cleared.
+  const markCleared = (key) => {
+    setClearedLog((prev) => ({ ...prev, [key]: Date.now() }));
+    setSessionDurations((prev) => { const next = { ...prev }; delete next[key]; return next; });
+  };
+
+  // One-tap skip, with six seconds to take it back. Undo restores the log and the trophy case exactly as they were,
+  // and marks the skip as cleared so a copy already on the account cannot bring it back.
   const quickSkip = (target) => {
-    if (activeTimer && activeTimer.key === target.key) setActiveTimer(null);
+    const before = { sessionLog, badges };
+    if (activeTimer && activeTimer.key === target.key) { setActiveTimer(null); setCancelAsk(false); }
     logSession(target, "Didn't get to it", { navigate: false });
+    showToast("Skipped.", "undo", { label: "Undo", onClick: () => {
+      setSessionLog(before.sessionLog);
+      setBadges(before.badges);
+      if (!(target.key in before.sessionLog)) markCleared(target.key);
+    } });
+  };
+
+  // Reopens check-in for a logged or skipped session, with what was chosen last time shown.
+  const openChange = (target) => {
+    setCoachNote("");
+    openCheckin({ ...target, changing: true, previousFeeling: sessionLog[target.key] });
+  };
+
+  // "Clear this": the session goes back to not done, and its minutes with it. Trophies already earned stay.
+  const clearSession = (target) => {
+    setSessionLog((prev) => { const next = { ...prev }; delete next[target.key]; return next; });
+    markCleared(target.key);
+    showToast("Cleared.");
+    backToDashboard();
+  };
+
+  const toggleTimerSettings = () => {
+    const next = !timerSettingsOpen;
+    setTimerSettingsOpen(next);
+    try { localStorage.setItem(TIMER_SETTINGS_KEY, next ? "open" : "closed"); } catch (e) { /* storage unavailable */ }
   };
 
   const startRideTimer = (target, targetMins) => {
@@ -2164,8 +2581,10 @@ export default function SofaToSingletrack() {
     if (voiceOn) speak(`Starting your ${targetMins} minute ride.`);
     setActiveTimer({ key: target.key, startedAt: Date.now(), mode: timerMode, targetMins, junior });
     setTimerAlerted(false);
+    setCancelAsk(false);
   };
-  const cancelRideTimer = () => { setActiveTimer(null); setTimerAlerted(false); };
+  // Cancel asks first ("Stop the timer and lose the time?"); only Stop throws the time away.
+  const cancelRideTimer = () => { setActiveTimer(null); setTimerAlerted(false); setCancelAsk(false); };
   const finishRideTimer = () => {
     if (!activeTimer) return;
     const elapsedMins = Math.max(1, Math.round((Date.now() - activeTimer.startedAt) / 60000));
@@ -2174,6 +2593,7 @@ export default function SofaToSingletrack() {
     setSessionDurations((prev) => ({ ...prev, [key]: elapsedMins }));
     setActiveTimer(null);
     setTimerAlerted(false);
+    setCancelAsk(false);
     if (priorBest > 0 && elapsedMins > priorBest) {
       showToast(`⭐ New personal best! Longest ride yet: ${formatMinutes(elapsedMins)}`, "trophy");
     }
@@ -2184,7 +2604,6 @@ export default function SofaToSingletrack() {
   const backToDashboard = () => {
     setCheckinTarget(null);
     setCoachNote("");
-    setAdjustWarning(null);
     setExplainerOpen(false);
     setStage("dashboard");
   };
@@ -2199,18 +2618,18 @@ export default function SofaToSingletrack() {
       `Interested in: ${qaTopics.length ? qaTopics.join(", ") : "not specified"}`,
       qaNotes.trim() ? `Notes: ${qaNotes.trim()}` : null,
     ].filter(Boolean).join("\n");
-    const mailto = `mailto:info@mtbeast.co.uk?subject=${encodeURIComponent("Sofa to Singletrack — what I'd like from MTB East")}&body=${encodeURIComponent(lines)}`;
+    const mailto = `mailto:info@mtbeast.co.uk?subject=${encodeURIComponent("Sofa to Singletrack: what I'd like from MTB East")}&body=${encodeURIComponent(lines)}`;
     window.location.href = mailto;
     setQaTopics([]);
     setQaNotes("");
     setStage("dashboard");
-    showToast("Thanks — opening your email to send this to the coaches.");
+    showToast("Thanks. Opening your email to send this to the coaches.");
   };
 
   const handleShare = async () => {
     const shareData = {
       title: "Sofa to Singletrack",
-      text: "I'm using Sofa to Singletrack, an MTB East programme to get riding regularly — thought you might like it too.",
+      text: "I'm using Sofa to Singletrack, an MTB East programme to get riding regularly. Thought you might like it too.",
       url: window.location.origin,
     };
     if (navigator.share) {
@@ -2219,7 +2638,7 @@ export default function SofaToSingletrack() {
     }
     try {
       await navigator.clipboard.writeText(shareData.url);
-      showToast("Link copied — paste it to share!");
+      showToast("Link copied. Paste it to share!");
     } catch (e) {
       showToast(`Share this link: ${shareData.url}`);
     }
@@ -2300,7 +2719,7 @@ export default function SofaToSingletrack() {
   const handleShareFinishCard = async () => {
     const blob = await generateFinishCardBlob();
     if (!blob) {
-      showToast("Couldn't create the image — try again.");
+      showToast("Couldn't create the image. Try again.");
       return;
     }
     const file = new File([blob], "sofa-to-singletrack-complete.png", { type: "image/png" });
@@ -2322,7 +2741,7 @@ export default function SofaToSingletrack() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast("Image saved — share it from your photos!");
+    showToast("Image saved. Share it from your photos!");
   };
 
   const openAdHocForm = () => {
@@ -2350,7 +2769,7 @@ export default function SofaToSingletrack() {
     if (justAwarded.length > 0) {
       celebrateTrophies(justAwarded);
     } else {
-      showToast("Nice one — ride logged.");
+      showToast("Nice one. Ride logged.");
     }
   };
 
@@ -2373,12 +2792,13 @@ export default function SofaToSingletrack() {
 
   // Family riders: each has their own plan and progress. Switching saves the current rider first, then loads the other.
   const flushCurrentRider = () => {
-    try { localStorage.setItem(keyForRider(riderIndex.active), JSON.stringify(buildPayload())); } catch (e) { /* storage unavailable */ }
+    const payload = buildPayload();
+    writeItem(keyForRider(riderIndex.active), JSON.stringify(payload));
+    // The outgoing rider goes up now, not after the usual two-second wait, so switching never leaves them behind.
+    if (syncReady) pushNow(riderIndex.active, profile.name, payload);
   };
   const loadRider = (id, fallbackName) => {
-    let raw = null;
-    try { raw = localStorage.getItem(keyForRider(id)); } catch (e) { /* storage unavailable */ }
-    applySaved(raw ? JSON.parse(raw) : blankSaved(fallbackName || ""));
+    applyStored(keyForRider(id), readItem(keyForRider(id)), fallbackName || "");
     setStep(0);
   };
   const switchRider = (id) => {
@@ -2402,19 +2822,35 @@ export default function SofaToSingletrack() {
     return null;
   };
   const removeRider = (id) => {
-    if (id === "main") return;
+    if (id === riderIndex.riders[0].id) return;
     const who = riderIndex.riders.find((r) => r.id === id);
     if (!window.confirm(`Remove ${who && who.name ? who.name : "this rider"} and their progress for good?`)) return;
     try { localStorage.removeItem(keyForRider(id)); localStorage.removeItem(keyForRider(id) + ":backup"); } catch (e) { /* storage unavailable */ }
-    if (account && account.signedIn) fetch("/api/programme/progress", { method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ riderId: id }) }).catch(() => {});
-    const remaining = riderIndex.riders.filter((r) => r.id !== id);
+    const sync = syncRef.current;
+    if (sync.pending && sync.pending.id === id) { sync.pending = null; clearTimeout(sync.timer); sync.timer = null; }
+    // Remembered as removed (so this device never pushes them again); the DELETE is retried when back online if it fails.
+    let next = markRemoved(riderIndex, id, Date.now(), !!(account && account.signedIn));
     if (id === riderIndex.active) {
-      const first = remaining[0];
+      const first = next.riders[0];
       loadRider(first.id, first.name);
-      persistIndex({ active: first.id, riders: remaining });
-    } else {
-      persistIndex({ ...riderIndex, riders: remaining });
+      next = { ...next, active: first.id };
     }
+    persistIndex(next);
+    if (account && account.signedIn) {
+      fetch("/api/programme/progress", { method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ riderId: id }) })
+        .then((res) => { if (res.status === 401) handleSignedOut(); else if (res.ok || res.status === 404 || res.status === 410) persistIndex(confirmRemoved(riderIndexRef.current, [id])); })
+        .catch(() => { /* still pending: retried on online/focus */ });
+    }
+  };
+
+  // Settings' Restore of the earlier copy: it becomes the live copy with savedAt = now, goes up at once, and the app reloads.
+  const restoreBackup = async (safe) => {
+    const key = keyForRider(riderIndex.active);
+    restoringRef.current = true;
+    if (!writeItem(key, JSON.stringify(safe))) { restoringRef.current = false; showToast("This browser wouldn't save the earlier copy."); return; }
+    try { localStorage.removeItem(key + ":backup"); } catch (e) { /* storage unavailable */ }
+    if (syncReady) await Promise.race([pushNow(riderIndex.active, safe.profile.name, safe), new Promise((r) => setTimeout(r, 4000))]);
+    window.location.reload();
   };
 
   const changeTextSize = (key) => {
@@ -2424,11 +2860,24 @@ export default function SofaToSingletrack() {
 
   const selectedRace = races.find((r) => r.id === profile.raceId);
 
-  const adjustTag = (feeling) => {
-    if (junior) return null; // Juniors sessions are never adjusted (applyFeelingAdjustment returns null for them)
-    if (feeling === "Tougher than expected" || feeling === "Had to stop early") return "Take it easier — adjusted after your last session";
-    if (feeling === "Easier than expected") return "Pushed a little more — adjusted after your last session";
-    return null;
+  // Missed weeks: today's week is more than one past the last week with anything logged. The card offers to move the
+  // programme so this week holds the next unlogged session; "Keep my dates" puts it away until another week passes.
+  const thisWeekN = weekNumberForDate(programStart, new Date());
+  const missed = stage === "dashboard" && !programmeComplete ? missedWeeks(programStart, sessionLog, weeks, new Date()) : 0;
+  const showMissedWeeks = missed > 0 && keepDatesWeek !== thisWeekN;
+  const pickUpWhereLeftOff = () => {
+    setProgramStart(shiftProgrammeStart(programStart, missed));
+    setKeepDatesWeek(null);
+    setShowComebackNudge(false); // they are back: no need to say the bike missed them as well
+    showToast("Your plan now starts again this week");
+  };
+
+  // "Skip Thursday's Steady ride", for the Skip buttons.
+  const skipLabel = (s) => {
+    const name = s.session.name;
+    const what = name === "Steady" ? "Steady ride" : name === "Skills" ? "Skills session" : name === "Intervals" ? "Intervals session" : name;
+    const day = DAY_NAMES[s.session.day];
+    return `Skip ${day ? `${day}'s ` : ""}${what}`;
   };
 
   return (
@@ -2456,6 +2905,8 @@ export default function SofaToSingletrack() {
 
         {toast && (
           <div
+            role="status"
+            aria-live="polite"
             className={toastType === "trophy" ? "toast-pop" : undefined}
             style={{
               position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)",
@@ -2465,7 +2916,10 @@ export default function SofaToSingletrack() {
               boxShadow: "0 4px 16px rgba(0,0,0,0.5)", maxWidth: "88vw", textAlign: "center",
             }}
           >
-            {toast}
+            {toast.text}
+            {toast.action && (
+              <button onClick={() => { setToast(null); toast.action.onClick(); }} style={{ marginLeft: 12, minHeight: 32, background: "none", border: "1px solid rgba(255,255,255,0.6)", color: "#fff", borderRadius: 8, padding: "4px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{toast.action.label}</button>
+            )}
           </div>
         )}
 
@@ -2473,14 +2927,15 @@ export default function SofaToSingletrack() {
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px 40px" }}>
           <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 8 }}>AN MTB EAST PROGRAMME</div>
           <h1 className="display" style={{ fontSize: 40, lineHeight: 1.05, margin: "0 0 16px", color: "#E8792B" }}>SOFA TO<br />SINGLETRACK</h1>
+          <TextSizeControl value={textSize} onChange={changeTextSize} />
           <p style={{ fontSize: 16, lineHeight: 1.5, color: "#F4F3EF", marginBottom: 10 }}>
-            A simple plan to get you riding regularly — 2 or 3 sessions a week, on days that work for you, time-based
-            so you don't need a fancy bike computer. Racing is entirely optional, and never the point.
+            A simple plan to get you riding regularly: two or three rides a week, on days that suit you, timed by the clock
+            so you need no bike computer. Racing is optional, and never the point.
           </p>
-          <p style={{ fontSize: 15, lineHeight: 1.5, color: "#B9BDB8", marginBottom: 28 }}>
-            Built by MTB East, for off-road riding specifically — not a general cycling app. Real local trails, a real local club.
-            Under-14s get Sofa to Singletrack Juniors: eight weeks of games, with a grown-up.
+          <p style={{ fontSize: 15, lineHeight: 1.5, color: "#B9BDB8", marginBottom: 20 }}>
+            Built by MTB East for off-road riding on real local trails. Under-14s get Sofa to Singletrack Juniors: eight weeks of games, with a grown-up.
           </p>
+          <button onClick={() => { setBikeCheckDone(false); setFitnessConfirmed(false); setStage("onboarding"); }} style={{ ...navBtn, marginBottom: 28 }}>Start your programme</button>
           <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 28, border: "1px solid #2b2b2b" }}>
             <ContourProgress weeks={defaultPlan()} currentWeek={1} />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: "#B9BDB8", marginTop: 4 }}>
@@ -2488,8 +2943,6 @@ export default function SofaToSingletrack() {
             </div>
           </div>
           <GpNote />
-          <TextSizeControl value={textSize} onChange={changeTextSize} />
-          <button onClick={() => { setBikeCheckDone(false); setFitnessConfirmed(false); setStage("onboarding"); }} style={navBtn}>Start your programme</button>
           <InstallPrompt deferredPrompt={deferredPrompt} onInstall={handleInstallClick} isIOS={isIOS} isStandalone={isStandalone} />
           <p style={{ fontSize: 15, color: "#868A85", lineHeight: 1.5, marginTop: 18 }}>
             Training and fuelling notes are general guidance from a fixed content library, not personalised medical, dietetic or coaching advice.
@@ -2505,12 +2958,16 @@ export default function SofaToSingletrack() {
 
       {stage === "onboarding" && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px" }}>
-          <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 20 }}>GET STARTED</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 20 }}>
+            <div className="display" style={{ fontSize: 14, color: "#1B8A82" }}>GET STARTED</div>
+            <div style={{ fontSize: 14, color: "#B9BDB8", fontWeight: 600 }} aria-live="polite">Step {stepList.indexOf(stepName) + 1} of {stepList.length}</div>
+          </div>
 
           {stepName === "name" && (
             <div>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>{riderIndex.active === "main" ? "What should we call you?" : "What should we call them?"}</label>
-              <input ref={nameRef} value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} placeholder="First name" style={inputStyle} />
+              <TextSizeControl value={textSize} onChange={changeTextSize} />
+              <label htmlFor="rider-name" style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>{riderIndex.active === riderIndex.riders[0].id ? "What should we call you?" : "What should we call them?"}</label>
+              <input id="rider-name" ref={nameRef} value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} placeholder="First name" style={inputStyle} />
               <button onClick={() => setStep(1)} style={navBtn} disabled={!profile.name.trim()}>Next</button>
             </div>
           )}
@@ -2540,9 +2997,9 @@ export default function SofaToSingletrack() {
           {stepName === "daysPerWeek" && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>How many days a week can you ride?</label>
-              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either works — pick whatever actually fits your week. Three days is Skills, Steady and The long one; two days folds the skill into the long ride, so nothing is dropped.</p>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either works. Pick whatever fits your week. Three days is Skills, Steady and The long one; two days folds the skill into the long ride, so nothing is dropped.</p>
               <button onClick={() => { setSessionsPerWeek(3); goToStep("days"); }} style={{ ...choiceBtn, borderColor: profile.sessionsPerWeek === 3 ? "#E8792B" : "#2b2b2b" }}>3 days a week (recommended)</button>
-              <button onClick={() => { setSessionsPerWeek(2); goToStep("days"); }} style={{ ...choiceBtn, borderColor: profile.sessionsPerWeek === 2 ? "#E8792B" : "#2b2b2b" }}>2 days a week — e.g. weekends only</button>
+              <button onClick={() => { setSessionsPerWeek(2); goToStep("days"); }} style={{ ...choiceBtn, borderColor: profile.sessionsPerWeek === 2 ? "#E8792B" : "#2b2b2b" }}>2 days a week, weekends for example</button>
               <button onClick={() => goToStep("experience")} style={backBtn}>Back</button>
             </div>
           )}
@@ -2550,14 +3007,14 @@ export default function SofaToSingletrack() {
           {stepName === "days" && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>{profile.junior ? "Which two days work best?" : `Which ${profile.sessionsPerWeek} days work best?`}</label>
-              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Pick exactly {profile.sessionsPerWeek} — tap to select or deselect.{profile.junior ? " Two sessions a week, 15 to 35 minutes each." : ""}</p>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Pick exactly {profile.sessionsPerWeek}. Tap to select or deselect.{profile.junior ? " Two sessions a week, 15 to 35 minutes each." : ""}</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
                 {WEEKDAYS.map((day) => {
                   const selected = profile.chosenDays.includes(day);
                   const disabled = !selected && profile.chosenDays.length >= profile.sessionsPerWeek;
                   return (
                     <button key={day} onClick={() => toggleDay(day)} disabled={disabled}
-                      style={{ padding: "10px 16px", borderRadius: 8, border: "1.5px solid " + (selected ? "#AE5B20" : "#2b2b2b"), background: selected ? "#AE5B20" : "#161616", color: selected ? "#fff" : disabled ? "#5c5f5c" : "#F4F3EF", fontSize: 16, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>
+                      style={{ padding: "10px 16px", borderRadius: 8, border: "1.5px solid " + (selected ? "#AE5B20" : "#2b2b2b"), background: selected ? "#AE5B20" : "#161616", color: selected ? "#fff" : disabled ? "#868A85" : "#F4F3EF", fontSize: 16, fontWeight: 600, cursor: disabled ? "default" : "pointer" }}>
                       {day}
                     </button>
                   );
@@ -2571,9 +3028,9 @@ export default function SofaToSingletrack() {
           {stepName === "planType" && (
             <div>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>How do you want to plan it?</label>
-              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either way, the goal is the same — riding regularly. Racing is just an optional bonus if you fancy it.</p>
+              <p style={{ fontSize: 14, color: "#B9BDB8", marginTop: 0, marginBottom: 14 }}>Either way, the goal is the same: riding regularly. Racing is an optional bonus if you fancy it.</p>
               <button onClick={() => { setProfile({ ...profile, planType: "race" }); setStep(step + 1); }} style={{ ...choiceBtn, borderColor: profile.planType === "race" ? "#E8792B" : "#2b2b2b" }}>I'd like the option of a race at the end</button>
-              <button onClick={() => { setProfile({ ...profile, planType: "months" }); setStep(step + 1); }} style={{ ...choiceBtn, borderColor: profile.planType === "months" ? "#E8792B" : "#2b2b2b" }}>No pressure — just build a riding habit</button>
+              <button onClick={() => { setProfile({ ...profile, planType: "months" }); setStep(step + 1); }} style={{ ...choiceBtn, borderColor: profile.planType === "months" ? "#E8792B" : "#2b2b2b" }}>No pressure, just build a riding habit</button>
               <button onClick={() => goToStep("days")} style={backBtn}>Back</button>
             </div>
           )}
@@ -2597,7 +3054,7 @@ export default function SofaToSingletrack() {
                   const away = weeksUntil(race.date);
                   return (
                     <button key={race.id} onClick={() => chooseRace(race)} style={{ ...choiceBtn, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                      <span><strong>{race.name}</strong> — {race.venue}</span>
+                      <span><strong>{race.name}</strong>, {race.venue}</span>
                       <span style={{ color: "#B9BDB8", fontSize: 15, textAlign: "right", flexShrink: 0 }}>{new Date(race.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}<br /><span style={{ fontSize: 13 }}>{away} week{away === 1 ? "" : "s"} away</span></span>
                     </button>
                   );
@@ -2637,7 +3094,7 @@ export default function SofaToSingletrack() {
                 ) : (
                   <>
                     <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>
-                      {weeks.length} weeks, {profile.sessionsPerWeek} sessions a week ({profile.chosenDays.join("/")}){profile.planType === "race" && selectedRace ? <> — with the option to race at <strong>{selectedRace.name}</strong>, {selectedRace.venue}</> : <> — no race pressure, just building the habit</>}.
+                      {weeks.length} weeks, {profile.sessionsPerWeek} sessions a week ({profile.chosenDays.join("/")}){profile.planType === "race" && selectedRace ? <>, with the option to race at <strong>{selectedRace.name}</strong>, {selectedRace.venue}</> : <>, no race pressure, just building the habit</>}.
                     </p>
                     {profile.delayWeeks > 0 && selectedRace && (
                       <p style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.5, color: "#E8792B" }}>
@@ -2645,7 +3102,7 @@ export default function SofaToSingletrack() {
                       </p>
                     )}
                     <p style={{ margin: "10px 0 0", fontSize: 14, color: "#B9BDB8", lineHeight: 1.5 }}>
-                      Every session works just as well outdoors on the trail or indoors on a turbo trainer / gym bike — same time, same effort, whichever suits you that day.
+                      Every session works just as well outdoors on the trail or indoors on a turbo trainer / gym bike: same time, same effort, whichever suits you that day.
                     </p>
                   </>
                 )}
@@ -2662,7 +3119,11 @@ export default function SofaToSingletrack() {
 
               <div style={{ background: "#161616", borderRadius: 12, padding: "18px 20px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Before you start</div>
-                <GpNote forGrownUp={profile.junior} />
+                {/* The full health note is on the welcome screen; here it is one tap away rather than read twice in full. */}
+                <details style={{ marginBottom: 12 }}>
+                  <summary style={{ cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#E8792B", minHeight: 44, display: "flex", alignItems: "center" }}>Read the health note</summary>
+                  <div style={{ marginTop: 10 }}><GpNote forGrownUp={profile.junior} /></div>
+                </details>
                 <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
                   <input type="checkbox" checked={fitnessConfirmed} onChange={(e) => setFitnessConfirmed(e.target.checked)} style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }} />
                   <span style={{ fontSize: 15, lineHeight: 1.5, color: "#F4F3EF" }}>
@@ -2674,6 +3135,11 @@ export default function SofaToSingletrack() {
               </div>
 
               <button onClick={startProgramme} style={navBtn} disabled={!bikeCheckDone || !fitnessConfirmed}>{profile.junior ? "Build their programme" : "Build my programme"}</button>
+              {(!bikeCheckDone || !fitnessConfirmed) && (
+                <p role="status" style={{ margin: "-2px 0 10px", fontSize: 14, color: "#B9BDB8", textAlign: "center", lineHeight: 1.4 }}>
+                  {!bikeCheckDone && !fitnessConfirmed ? "Tick the bike check and the health note to carry on" : !bikeCheckDone ? "Tick the bike check to carry on" : "Tick the health note to carry on"}
+                </p>
+              )}
               <button onClick={() => goToStep(profile.junior ? "days" : profile.planType === "race" ? "race" : "months")} style={backBtn}>Back</button>
             </div>
           )}
@@ -2683,18 +3149,37 @@ export default function SofaToSingletrack() {
       {stage === "dashboard" && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "28px 20px 48px" }}>
 
-          {showComebackNudge && !programmeComplete && (
+          {storageBroken && (
+            <div role="alert" style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "2px solid #E24B4A", fontSize: 15, lineHeight: 1.5, color: "#F4F3EF" }}>
+              This browser isn't keeping your progress. Sign in so it saves to your account, or download a backup from Settings.
+            </div>
+          )}
+
+          {showMissedWeeks && (
+            <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", marginBottom: 16, border: "1px solid #E8792B" }}>
+              <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 4 }}>Been away for a bit? No problem.</div>
+              <p style={{ margin: "0 0 12px", fontSize: 15, color: "#B9BDB8", lineHeight: 1.5 }}>
+                Your next session was {missed === 1 ? "a week" : `${missed} weeks`} ago on the calendar. Pick up where you left off and the plan starts again this week, with every ride you have logged kept. Or keep the dates as they are.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={pickUpWhereLeftOff} style={{ ...navBtn, marginBottom: 0, flex: 1, minWidth: 180 }}>Pick up where I left off</button>
+                <button onClick={() => setKeepDatesWeek(thisWeekN)} style={{ flex: 1, minWidth: 140, background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "12px 14px", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Keep my dates</button>
+              </div>
+            </div>
+          )}
+
+          {showComebackNudge && !programmeComplete && !showMissedWeeks && (
             <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: "1px solid #E8792B", display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">🚲</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 2 }}>Your bike misses you</div>
-                <div style={{ fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>It's been a couple of weeks — no pressure, jump back in whenever you're ready.</div>
+                <div style={{ fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>It's been a couple of weeks. No pressure, jump back in whenever you're ready.</div>
               </div>
-              <button onClick={() => setShowComebackNudge(false)} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#868A85", fontSize: 20, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0 }}>×</button>
+              <button onClick={() => setShowComebackNudge(false)} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#868A85", fontSize: 24, cursor: "pointer", width: 44, height: 44, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
             </div>
           )}
 
-          {!(account && !account.signedIn && signInCardHidden) && <AccountCard account={account} onHide={() => { setSignInCardHidden(true); try { localStorage.setItem("sofaToSingletrack:hideSignInCard", "1"); } catch (e) { /* storage unavailable */ } }} />}
+          {(syncState.status === "signedOut" || !(account && !account.signedIn && signInCardHidden)) && <AccountCard account={account} syncState={{ ...syncState, lastSavedAt: (riderIndex.riders.find((r) => r.id === riderIndex.active) || {}).lastSavedAt }} onHide={() => { setSignInCardHidden(true); try { localStorage.setItem("sofaToSingletrack:hideSignInCard", "1"); } catch (e) { /* storage unavailable */ } }} />}
           {raceWeek && <RaceWeekCard entry={raceWeek} junior={junior} />}
           {!raceWeek && selectedRace && raceWeekNote(daysUntil(selectedRace.date), junior) && new Date(selectedRace.date + "T00:00:00") >= new Date(new Date().setHours(0, 0, 0, 0)) && (
             <RaceCoachNote race={selectedRace} note={raceWeekNote(daysUntil(selectedRace.date), junior)} />
@@ -2707,36 +3192,42 @@ export default function SofaToSingletrack() {
             <div style={{ background: "#161616", borderRadius: 14, padding: "20px", marginBottom: 16, border: "2px solid #E8792B", position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: -112, right: -112, width: 254, height: 254, borderRadius: "50%", background: "radial-gradient(circle, rgba(232,121,43,0.35) 0%, rgba(232,121,43,0) 70%)", pointerEvents: "none" }} />
               <div style={{ position: "relative" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                <div style={{ background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 10, padding: "5px 10px", textAlign: "center", minWidth: 44, flexShrink: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.04em" }}>{nextSession.session.day}</div>
-                  <div className="display" style={{ fontSize: 20, color: "#F4F3EF", lineHeight: 1.1 }}>{sessionDate(programStart, nextSession.weekN, nextSession.session.day).getDate()}</div>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Next up{roleLabel(nextSession.session) ? ` · ${roleLabel(nextSession.session)}` : ""}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">{iconFor(nextSession.session.name)}</span>
-                    <div style={{ fontSize: 20, fontWeight: 700 }}>{nextSession.session.name}</div>
-                    {MICRO_EXPLAINERS[nextSession.session.name] && (
-                      <button onClick={() => setExplainerOpen((v) => !v)} aria-label="Why this session?" style={{ width: 20, height: 20, borderRadius: "50%", background: "none", border: "1px solid #B9BDB8", color: "#B9BDB8", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: "18px", padding: 0, flexShrink: 0 }}>?</button>
+              {(() => {
+                const when = sessionDate(programStart, nextSession.weekN, nextSession.session.day);
+                const explainer = explainerFor(nextSession.session);
+                return (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                      <div aria-label={shortDate(when)} style={{ background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 10, padding: "5px 10px", textAlign: "center", minWidth: 48, flexShrink: 0 }}>
+                        <div aria-hidden="true" style={{ fontSize: 12.5, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.04em" }}>{nextSession.session.day}</div>
+                        <div aria-hidden="true" className="display" style={{ fontSize: 20, color: "#F4F3EF", lineHeight: 1.1 }}>{when.getDate()}</div>
+                        <div aria-hidden="true" style={{ fontSize: 12.5, fontWeight: 700, color: "#B9BDB8", letterSpacing: "0.04em" }}>{when.toLocaleDateString("en-GB", { month: "short" })}</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Next up{roleLabel(nextSession.session) ? ` · ${roleLabel(nextSession.session)}` : ""}{DAY_NAMES[nextSession.session.day] ? ` · ${DAY_NAMES[nextSession.session.day]}` : ""}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 22, flexShrink: 0 }} aria-hidden="true">{iconFor(nextSession.session.name)}</span>
+                          <div style={{ fontSize: 20, fontWeight: 700 }}>{nextSession.session.name}</div>
+                          {explainer && (
+                            <button onClick={() => setExplainerOpen((v) => !v)} aria-label="What this session means" aria-expanded={explainerOpen} style={{ width: 44, height: 44, minHeight: 44, borderRadius: "50%", background: "none", border: "none", color: "#B9BDB8", cursor: "pointer", padding: 0, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                              <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #B9BDB8", fontSize: 14, fontWeight: 700, lineHeight: "20px", textAlign: "center" }}>?</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                      <EffortDots effort={nextSession.session.effort} note={sameNote(nextSession.session.effortNote, nextSessionEffective.detail) ? null : nextSession.session.effortNote} />
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#B9BDB8" }}>{nextSession.session.minsText || `${nextSessionEffective.mins} min`}</span>
+                    </div>
+                    {explainerOpen && explainer && (
+                      <p style={{ fontSize: 14, color: "#B9BDB8", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "0 0 10px", lineHeight: 1.4 }}>
+                        {explainer}
+                      </p>
                     )}
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                <EffortDots effort={nextSession.session.effort} note={sameNote(nextSession.session.effortNote, nextSessionEffective.detail) ? null : nextSession.session.effortNote} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: "#B9BDB8" }}>{nextSession.session.minsText || `${nextSessionEffective.mins} min`}</span>
-              </div>
-              {explainerOpen && MICRO_EXPLAINERS[nextSession.session.name] && (
-                <p style={{ fontSize: 14, color: "#B9BDB8", background: "#0d0d0d", borderRadius: 8, padding: "8px 10px", margin: "0 0 10px", lineHeight: 1.4 }}>
-                  {MICRO_EXPLAINERS[nextSession.session.name]}
-                </p>
-              )}
-              {adjustTag(lastFeeling) && (
-                <div style={{ display: "inline-block", background: "#0d0d0d", color: "#1B8A82", fontSize: 13, fontWeight: 600, borderRadius: 6, padding: "3px 8px", marginBottom: 8 }}>
-                  {adjustTag(lastFeeling)}
-                </div>
-              )}
+                  </>
+                );
+              })()}
               {junior ? (
                 <JuniorGame key={nextSession.key} session={nextSession.session} />
               ) : nextSessionEffective.detail ? (
@@ -2761,22 +3252,11 @@ export default function SofaToSingletrack() {
                 const overtime = running && isDown && remainingMs <= 0;
                 return (
                   <>
-                    {!running && (
-                      <div style={{ display: "flex", gap: 6, marginBottom: 10, justifyContent: "center" }}>
-                        {["up", "down"].map((m) => {
-                          const active = timerMode === m;
-                          return (
-                            <button key={m} onClick={() => setTimerMode(m)}
-                              style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 10px", borderRadius: 5, border: "1px solid " + (active ? "rgb(102,255,0)" : "#2b2b2b"), background: active ? "rgba(102,255,0,0.12)" : "#0d0d0d", color: active ? "rgb(102,255,0)" : "#B9BDB8", cursor: "pointer" }}>
-                              {m === "up" ? "⏱ Count up" : "⏳ Count down"}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
                     <div
                       className={overtime ? "timer-alert" : undefined}
-                      style={{ background: "#0d0d0d", borderRadius: 10, padding: "14px", marginBottom: 12, textAlign: "center", border: "1px solid " + (overtime ? "#E24B4A" : "rgb(102, 255, 0)") }}
+                      role="timer"
+                      aria-live={running ? "off" : undefined}
+                      style={{ background: "#0d0d0d", borderRadius: 10, padding: "14px", marginBottom: 12, textAlign: "center", border: "1px solid " + (overtime ? "#E24B4A" : "#E8792B") }}
                     >
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: overtime ? "#E24B4A" : "#868A85", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
                         {overtime ? "Time's up!" : isDown ? "Time left" : "Elapsed"}
@@ -2787,22 +3267,62 @@ export default function SofaToSingletrack() {
                           : overtime ? `+${formatElapsed(Math.abs(remainingMs))}` : formatElapsed(isDown ? remainingMs : elapsedMs)}
                       </div>
                     </div>
-                    <RideTimerStatus running={running} wakeState={wakeState} voiceOn={voiceOn} onToggleVoice={toggleVoice} beep={!junior} />
                     {running ? (
-                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                        <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
-                        <button onClick={cancelRideTimer} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>Cancel</button>
-                      </div>
+                      cancelAsk ? (
+                        <div role="alertdialog" aria-label="Stop the timer and lose the time?" style={{ background: "#0d0d0d", border: "1px solid #E8792B", borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
+                          <p style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 600 }}>Stop the timer and lose the time?</p>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button onClick={() => setCancelAsk(false)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Keep going</button>
+                            <button onClick={cancelRideTimer} style={{ flex: 1, background: "none", border: "1px solid #5a2a2a", color: "#E24B4A", borderRadius: 10, padding: "0 12px", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Stop</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                          <button onClick={finishRideTimer} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>Finish ride</button>
+                          <button onClick={() => setCancelAsk(true)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>Cancel</button>
+                        </div>
+                      )
                     ) : (
-                      <button onClick={() => startRideTimer(nextSession, nextSessionEffective.mins)} style={{ ...navBtn, background: "rgb(102, 255, 0)", color: "#14171A" }}>▶ Start ride timer</button>
+                      <button onClick={() => startRideTimer(nextSession, nextSessionEffective.mins)} style={{ ...navBtn, background: "#E8792B", color: "#14171A" }}>▶ Start ride timer</button>
                     )}
+                    {/* Count up or down, the voice cues and what the phone will do about the screen: tucked away so the card is the timer and the Start button. */}
+                    <div style={{ marginBottom: 12 }}>
+                      <button onClick={toggleTimerSettings} aria-expanded={timerSettingsOpen} style={{ width: "100%", background: "none", border: "1px solid #2b2b2b", borderRadius: 8, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#B9BDB8", fontSize: 14, fontWeight: 600 }}>
+                        <span>Timer settings</span>
+                        <span style={{ color: "#E8792B", fontSize: 16 }} aria-hidden="true">{timerSettingsOpen ? "–" : "+"}</span>
+                      </button>
+                      {timerSettingsOpen && (
+                        <div style={{ marginTop: 10 }}>
+                          {!running && (
+                            <div role="group" aria-label="Timer direction" style={{ display: "flex", gap: 6, marginBottom: 10, justifyContent: "center" }}>
+                              {["up", "down"].map((m) => {
+                                const active = timerMode === m;
+                                return (
+                                  <button key={m} onClick={() => setTimerMode(m)} aria-pressed={active}
+                                    style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 10px", borderRadius: 5, border: "1px solid " + (active ? "#E8792B" : "#2b2b2b"), background: active ? "rgba(232,121,43,0.14)" : "#0d0d0d", color: active ? "#E8792B" : "#B9BDB8", cursor: "pointer" }}>
+                                    {m === "up" ? "⏱ Count up" : "⏳ Count down"}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          <RideTimerStatus running={running} wakeState={wakeState} voiceOn={voiceOn} onToggleVoice={toggleVoice} beep={!junior} />
+                        </div>
+                      )}
+                    </div>
                   </>
                 );
               })()}
+              {justLogged.length > 0 && (
+                <p style={{ margin: "0 0 10px", fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>
+                  {sessionWords(justLogged[0].session)}: {sessionLog[justLogged[0].key] === SKIPPED ? "skipped" : sessionLog[justLogged[0].key].toLowerCase()}.{" "}
+                  <button onClick={() => openChange(justLogged[0])} style={changeLink}>Change</button>
+                </p>
+              )}
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => openCheckin(nextSession)} style={{ ...navBtn, marginBottom: 0, flex: 1 }}>{junior ? "Ticked by a grown-up" : "Log this session"}</button>
-                <button onClick={() => downloadSessionICS(nextSessionEffective, nextSession.weekN, nextSession.weekTitle, programStart)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>+ Cal</button>
-                <button onClick={() => quickSkip(nextSession)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>Skip</button>
+                <button onClick={() => downloadSessionICS(nextSessionEffective, nextSession.weekN, nextSession.weekTitle, programStart)} aria-label="Add this session to your calendar" style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>+ Cal</button>
+                <button onClick={() => quickSkip(nextSession)} aria-label={skipLabel(nextSession)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 10, padding: "0 12px", fontSize: 15, cursor: "pointer" }}>Skip</button>
               </div>
               </div>
             </div>
@@ -2824,7 +3344,7 @@ export default function SofaToSingletrack() {
               <p style={{ margin: "0 0 8px", fontSize: 15, lineHeight: 1.5, color: "#E8792B", fontWeight: 600 }}>{RACE_READY_TEXT}</p>
             )}
             <p style={{ margin: 0, fontSize: 16, lineHeight: 1.5, color: "#F4F3EF" }}>
-              {welcomeNote || `Nice and steady, ${profile.name || "rider"} — every session counts.`}
+              {welcomeNote || `Nice and steady, ${profile.name || "rider"}. Every session counts.`}
             </p>
             {lastWeekRideCount > 0 && (
               <p style={{ margin: "8px 0 0", fontSize: 14, color: "#1B8A82", fontWeight: 600 }}>
@@ -2845,7 +3365,7 @@ export default function SofaToSingletrack() {
               </div>
               <div style={{ flex: 1, background: "#0d0d0d", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
                 <div className="display" style={{ fontSize: 20, color: "#E8792B" }}>{longestStreakWeeks}</div>
-                <div style={{ fontSize: 13, color: "#B9BDB8", marginTop: 2 }}>Best streak (weeks)</div>
+                <div style={{ fontSize: 13, color: "#B9BDB8", marginTop: 2 }}>Longest run of weeks</div>
               </div>
             </div>
 
@@ -2853,7 +3373,7 @@ export default function SofaToSingletrack() {
 
             <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Trophy case</div>
             {badges.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 15, color: "#868A85", lineHeight: 1.5 }}>{junior ? "The first badge comes with the first game, once a grown-up has ticked it." : "Keep going — your first trophy unlocks after your first week done."}</p>
+              <p style={{ margin: 0, fontSize: 15, color: "#868A85", lineHeight: 1.5 }}>{junior ? "The first badge comes with the first game, once a grown-up has ticked it." : "Keep going. Your first trophy unlocks after your first week done."}</p>
             ) : (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {badges.map((b) => (
@@ -2865,6 +3385,13 @@ export default function SofaToSingletrack() {
               </div>
             )}
           </div>
+
+          {/* Settings sit here, just after the week card, so text size and training days are a short scroll away rather than at the very bottom. */}
+          <SettingsSection
+            storageKey={keyForRider(riderIndex.active)} profile={profile} setProfile={setProfile} weeks={weeks} setWeeks={setWeeks} showToast={showToast} onRestoreBackup={restoreBackup}
+            textSize={textSize} onTextSize={changeTextSize}
+            family={<FamilyPanel index={riderIndex} onSwitch={switchRider} onAdd={addRider} onRemove={removeRider} bordered={false} />}
+          />
 
           {programmeComplete && junior ? (
             <div>
@@ -2928,7 +3455,7 @@ export default function SofaToSingletrack() {
               <div style={{ background: "#161616", borderRadius: 12, padding: "16px 18px", border: "1px solid #2b2b2b" }}>
                 <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Just want to keep riding?</div>
                 <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 15, color: "#F4F3EF", lineHeight: 1.7 }}>
-                  <li>Keep logging rides whenever you get out — no plan required</li>
+                  <li>Keep logging rides whenever you get out, no plan required</li>
                   <li>Ask at your local bike shop or trail centre about routes and rides near you</li>
                   <li>Come and watch an MTB East race: spectators are welcome, and dogs on a lead too</li>
                 </ul>
@@ -2940,7 +3467,7 @@ export default function SofaToSingletrack() {
                 <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Coming up</div>
                   {upcoming.map((s, i) => {
-                    const eff = effectiveSession(s.session, adjustmentMins);
+                    const eff = effectiveSession(s.session);
                     return (
                       <div key={s.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: i < upcoming.length - 1 ? 10 : 0 }}>
                         <div className="display" style={{ fontSize: 14, color: "#E8792B", minWidth: 30 }}>{s.session.day}</div>
@@ -2948,10 +3475,21 @@ export default function SofaToSingletrack() {
                           <div style={{ fontWeight: 600, fontSize: 15 }}>{s.session.name}{roleLabel(s.session) ? <span style={{ fontWeight: 400, color: "#868A85" }}> · {roleLabel(s.session)} · {s.session.minsText || `${eff.mins} min`}</span> : null}</div>
                           <div style={{ fontSize: 14, color: "#B9BDB8" }}>{eff.detail || s.session.child || ""}</div>
                         </div>
-                        <button onClick={() => quickSkip(s)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#868A85", borderRadius: 6, padding: "3px 8px", fontSize: 13, cursor: "pointer", height: "fit-content" }}>Skip</button>
+                        <button onClick={() => quickSkip(s)} aria-label={skipLabel(s)} style={{ background: "none", border: "1px solid #2b2b2b", color: "#868A85", borderRadius: 6, padding: "3px 8px", fontSize: 13, cursor: "pointer", height: "fit-content" }}>Skip</button>
                       </div>
                     );
                   })}
+                  {justLogged.length > 0 && (
+                    <div style={{ borderTop: "1px solid #2b2b2b", marginTop: 12, paddingTop: 10 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#868A85", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Just logged</div>
+                      {justLogged.map((s) => (
+                        <div key={s.key} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14, marginBottom: 4 }}>
+                          <span style={{ flex: 1, color: "#B9BDB8" }}>{sessionWords(s.session)}: {sessionLog[s.key] === SKIPPED ? "skipped" : sessionLog[s.key].toLowerCase()}</span>
+                          <button onClick={() => openChange(s)} style={changeLink}>Change</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2965,15 +3503,14 @@ export default function SofaToSingletrack() {
             totalRidesLogged={Object.keys(sessionLog).filter((k) => sessionLog[k] !== "Didn't get to it").length}
             totalSessions={allSessions.length}
             sessionDurations={sessionDurations}
-            adjustmentMins={adjustmentMins}
           />
 
           <div style={{ background: "#161616", border: "1px solid #2b2b2b", borderRadius: 8, padding: adHocFormOpen ? "14px" : "10px 12px", marginBottom: 16 }}>
             {!adHocFormOpen ? (
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#F4F3EF" }}>Been out on your bike off-plan?</div>
-                  <div style={{ fontSize: 14, color: "#B9BDB8" }}>Any ride counts — not just the scheduled ones</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#F4F3EF" }}>Had a ride that wasn't on the plan?</div>
+                  <div style={{ fontSize: 14, color: "#B9BDB8" }}>Any ride counts</div>
                 </div>
                 <button onClick={openAdHocForm} style={{ background: "#0F5F59", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 14, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ Log a ride</button>
               </div>
@@ -3018,7 +3555,10 @@ export default function SofaToSingletrack() {
             </div>
           )}
 
-          {/* The donation and "Contact a coach" tiles are hidden on a Junior rider's dashboard; they stay on the account holder's. */}
+          {!junior && <CoachTips onContact={() => setStage("coachQA")} />}
+          <TipsAndAdvice />
+
+          {/* Get in touch and donations stay last. The donation and "Contact a coach" tiles are hidden on a Junior rider's dashboard; they stay on the account holder's. */}
           <div style={{ background: "#161616", borderRadius: 14, padding: "20px", marginBottom: 16, border: "2px solid #E8792B" }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Get in touch</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -3042,56 +3582,58 @@ export default function SofaToSingletrack() {
               </>
             )}
           </div>
-
-          {!junior && <CoachTips onContact={() => setStage("coachQA")} />}
-          <TipsAndAdvice />
-
-          <FamilyPanel index={riderIndex} onSwitch={switchRider} onAdd={addRider} onRemove={removeRider} />
-          <TextSizeControl value={textSize} onChange={changeTextSize} />
-          <SettingsSection storageKey={keyForRider(riderIndex.active)} profile={profile} setProfile={setProfile} weeks={weeks} setWeeks={setWeeks} showToast={showToast} />
         </div>
       )}
 
       {stage === "checkin" && checkinTarget && (
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px" }}>
-          <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 8 }}>{junior ? "TICKED BY A GROWN-UP" : "HOW DID IT GO?"}</div>
-          <h2 className="display" style={{ fontSize: 24, margin: "0 0 12px", color: "#E8792B" }}>{checkinTarget.session.name.toUpperCase()}</h2>
-          {junior && !(checkinTarget.key in sessionLog) && (
-            <p style={{ margin: "0 0 14px", fontSize: 15, lineHeight: 1.5, color: "#B9BDB8" }}>For the grown-up who rode with {profile.name || "them"}: how did it go?</p>
-          )}
-          <DoneWhen session={checkinTarget.session} />
-          {!(checkinTarget.key in sessionLog) && (
-            <div>
-              {(junior ? JUNIOR_FEELINGS : FEELINGS).map((opt) => (
-                <button key={opt} onClick={() => submitCheckin(opt)} style={choiceBtn}>{opt}</button>
-              ))}
-              <div style={{ height: 8 }} />
-              <button onClick={() => submitCheckin(SKIPPED)} style={{ ...choiceBtn, borderStyle: "dashed", color: "#B9BDB8" }}>
-                {junior ? JUNIOR_SKIPPED_LABEL : "Didn't get to it this week — that's okay"}
-              </button>
-            </div>
-          )}
-          {checkinTarget.key in sessionLog && (
-            <div>
+          {(() => {
+            // Changing a logged session shows the choices again with last time's answer marked; once a choice is made
+            // (logSession clears the flag) the page reads as a normal check-in with the coach note.
+            const changingNow = !!checkinTarget.changing;
+            const showChoices = !(checkinTarget.key in sessionLog) || changingNow;
+            return (
+              <>
+                <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 8 }}>{changingNow ? changingLabel(checkinTarget.session).toUpperCase() : junior ? "TICKED BY A GROWN-UP" : "HOW DID IT GO?"}</div>
+                <h2 className="display" style={{ fontSize: 24, margin: "0 0 12px", color: "#E8792B" }}>{checkinTarget.session.name.toUpperCase()}</h2>
+                {junior && showChoices && !changingNow && (
+                  <p style={{ margin: "0 0 14px", fontSize: 15, lineHeight: 1.5, color: "#B9BDB8" }}>For the grown-up who rode with {profile.name || "them"}: how did it go?</p>
+                )}
+                <DoneWhen session={checkinTarget.session} />
+                {showChoices && (
+                  <div>
+                    {(junior ? JUNIOR_FEELINGS : FEELINGS).map((opt) => {
+                      const was = changingNow && checkinTarget.previousFeeling === opt;
+                      return (
+                        <button key={opt} onClick={() => submitCheckin(opt)} aria-pressed={changingNow ? was : undefined} style={was ? { ...choiceBtn, borderColor: "#E8792B" } : choiceBtn}>{opt}{was ? " (last time)" : ""}</button>
+                      );
+                    })}
+                    <div style={{ height: 8 }} />
+                    <button onClick={() => submitCheckin(SKIPPED)} aria-pressed={changingNow ? checkinTarget.previousFeeling === SKIPPED : undefined} style={{ ...choiceBtn, borderStyle: "dashed", color: "#B9BDB8", ...(changingNow && checkinTarget.previousFeeling === SKIPPED ? { borderColor: "#E8792B" } : {}) }}>
+                      {junior ? JUNIOR_SKIPPED_LABEL : "Didn't get to it. That's fine, the next one is waiting."}{changingNow && checkinTarget.previousFeeling === SKIPPED ? " (last time)" : ""}
+                    </button>
+                    {changingNow && (
+                      <>
+                        <button onClick={() => clearSession(checkinTarget)} style={{ ...choiceBtn, color: "#E24B4A", borderColor: "#5a2a2a" }}>Clear this</button>
+                        <button onClick={backToDashboard} style={backBtn}>Back</button>
+                      </>
+                    )}
+                  </div>
+                )}
+                {!showChoices && (
+                  <div>
               <div style={{ background: "#14171A", borderRadius: 12, padding: "18px 20px", marginBottom: 20, color: "#F4F3EF" }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#E8792B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{junior ? "Coach note, for the grown-up" : "Coach note"}</div>
                 <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, minHeight: 20 }}>{coachNote}</p>
               </div>
 
-              {adjustWarning && (
-                <div style={{ background: "#161616", border: "1px solid #E8792B", borderRadius: 12, padding: "14px 16px", marginBottom: 20 }}>
-                  <p style={{ margin: 0, fontSize: 15, color: "#F4F3EF", lineHeight: 1.5 }}>
-                    ⚠️ {adjustWarning === "down"
-                      ? "We've trimmed 5 minutes off your sessions from here based on how that felt."
-                      : "We've added 5 minutes to your sessions from here since that felt easier than expected."}
-                    {" "}If you're finding you need this a lot, it's worth a quick chat with a coach rather than adjusting on your own.
-                  </p>
-                </div>
-              )}
-
-              <button onClick={backToDashboard} style={navBtn}>Back to home</button>
-            </div>
-          )}
+                    <button onClick={backToDashboard} style={navBtn}>Back to home</button>
+                    <button onClick={() => openChange(checkinTarget)} style={{ ...backBtn, color: "#E8792B", fontWeight: 600 }}>Change</button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -3100,11 +3642,11 @@ export default function SofaToSingletrack() {
           <div className="display" style={{ fontSize: 14, color: "#1B8A82", marginBottom: 8 }}>CONTACT A COACH</div>
           <h2 className="display" style={{ fontSize: 24, margin: "0 0 8px", color: "#E8792B" }}>WHAT WOULD HELP YOU MOST?</h2>
           <p style={{ fontSize: 15, color: "#B9BDB8", lineHeight: 1.5, marginBottom: 14 }}>
-            This isn't live chat — it opens an email from your own address to the coaches, so they can reply directly and we can find out what riders actually want from us.
+            This isn't live chat. It opens an email from your own address to the coaches, so they can reply directly and we can find out what riders actually want from us.
           </p>
           <div style={{ background: "#161616", borderRadius: 12, padding: "14px 16px", marginBottom: 20, border: "1px solid #2b2b2b" }}>
             <p style={{ margin: 0, fontSize: 14, color: "#B9BDB8", lineHeight: 1.5 }}>
-              This form is free to use. All coaching — 1-to-1 or an organised skills session — is a chargeable service. Tell us what you're after below and we'll get back to you with details.
+              This form is free to use. All coaching, 1-to-1 or an organised skills session, is a chargeable service. Tell us what you're after below and we'll get back to you with details.
             </p>
           </div>
 
@@ -3136,6 +3678,8 @@ export default function SofaToSingletrack() {
 
 const navBtn = { width: "100%", padding: "14px 0", background: "#0F5F59", color: "#FFFFFF", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", marginBottom: 10 };
 const backBtn = { width: "100%", padding: "12px 0", background: "none", color: "#B9BDB8", border: "none", fontSize: 16, cursor: "pointer" };
+// The small "Change" link on a session that has been logged or skipped.
+const changeLink = { background: "none", border: "none", color: "#E8792B", fontSize: 14, fontWeight: 700, cursor: "pointer", padding: "0 4px", minHeight: 0, textDecoration: "underline" };
 const choiceBtn = { display: "block", width: "100%", textAlign: "left", padding: "14px 16px", marginBottom: 10, background: "#161616", border: "1.5px solid #2b2b2b", color: "#F4F3EF", borderRadius: 10, fontSize: 15, cursor: "pointer" };
 const inputStyle = { width: "100%", padding: "12px 14px", borderRadius: 8, border: "1px solid #2b2b2b", background: "#161616", color: "#F4F3EF", fontSize: 16, marginBottom: 20, boxSizing: "border-box" };
 const actionGridBtn = { display: "block", background: "#0d0d0d", border: "1px solid #2b2b2b", color: "#F4F3EF", borderRadius: 8, padding: "10px 8px", fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "center", textDecoration: "none", boxSizing: "border-box" };

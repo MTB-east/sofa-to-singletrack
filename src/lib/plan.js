@@ -481,3 +481,351 @@ export function roleLabel(session) {
 }
 
 export const isJuniorSession = (session) => !!session && typeof session.role === "string" && session.role.startsWith("J");
+
+// ---- Saved-copy shape, rider ids, sync merging and the account status line ---------------------------
+// Everything the app needs to be careful about when a copy comes from storage or the account lives here, so it can be
+// tested without a browser.
+
+const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+const finite = (v) => typeof v === "number" && Number.isFinite(v);
+const isoOrNull = (v) => (typeof v === "string" && v !== "" && !Number.isNaN(Date.parse(v)) ? v : null);
+
+function cleanProfile(raw, blank) {
+  const base = isObj(blank) ? blank : {};
+  const p = isObj(raw) ? raw : {};
+  const out = { ...base, ...p };
+  out.name = typeof p.name === "string" ? p.name.slice(0, 40) : typeof base.name === "string" ? base.name : "";
+  out.chosenDays = Array.isArray(p.chosenDays) ? p.chosenDays.filter((d) => WEEKDAYS.includes(d)) : [];
+  out.junior = !!p.junior;
+  out.raceReady = !!p.raceReady;
+  out.sessionsPerWeek = finite(p.sessionsPerWeek) ? p.sessionsPerWeek : finite(base.sessionsPerWeek) ? base.sessionsPerWeek : 3;
+  out.delayWeeks = finite(p.delayWeeks) ? p.delayWeeks : 0;
+  return out;
+}
+
+function cleanLogMap(raw) {
+  if (!isObj(raw)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) if (typeof v === "string" || finite(v)) out[k] = v;
+  return out;
+}
+
+// { sessionKey: ms } of sessions cleared (or a skip undone) on some device, so the account merge never brings them back.
+function cleanClearedMap(raw) {
+  if (!isObj(raw)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) if (finite(v)) out[k] = v;
+  return out;
+}
+
+function cleanWeeks(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const ok = raw.every((w) => isObj(w) && finite(w.n) && Array.isArray(w.sessions) && w.sessions.every(isObj));
+  return ok ? raw.map((w) => ({ ...w, sessions: w.sessions.map((s) => ({ ...s })) })) : null;
+}
+
+function cleanAdHoc(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((r) => isObj(r) && finite(r.at))
+    .map((r) => ({ week: finite(r.week) ? r.week : 0, at: r.at, mins: finite(r.mins) ? r.mins : 0, feeling: typeof r.feeling === "string" ? r.feeling : "" }));
+}
+
+/**
+ * A safe copy of a saved snapshot, whatever came out of storage, a backup file or the account. `raw` may be JSON text
+ * or an object; anything unparseable gives null. Every field comes back with the right type: `weeks` is null when the
+ * copy holds no usable programme (the caller decides whether that means "fall back to blank"), `programStart` is null
+ * unless it parses, `savedAt` is a number. Unknown fields (a backup's `backup`, say) are dropped.
+ */
+export function normaliseSaved(raw, blank = {}) {
+  let src = raw;
+  if (typeof src === "string") {
+    try { src = JSON.parse(src); } catch (e) { return null; }
+  }
+  if (!isObj(src)) return null;
+  const b = isObj(blank) ? blank : {};
+  return {
+    profile: cleanProfile(src.profile, b.profile),
+    weeks: cleanWeeks(src.weeks),
+    planVersion: Number.isInteger(src.planVersion) ? src.planVersion : 1,
+    sessionLog: cleanLogMap(src.sessionLog),
+    sessionDurations: cleanLogMap(src.sessionDurations),
+    clearedLog: cleanClearedMap(src.clearedLog),
+    badges: Array.isArray(src.badges) ? src.badges.filter((x) => typeof x === "string") : [],
+    adHocLog: cleanAdHoc(src.adHocLog),
+    notifAsked: !!src.notifAsked,
+    notifEnabled: !!src.notifEnabled,
+    reminderTime: typeof src.reminderTime === "string" ? src.reminderTime : typeof b.reminderTime === "string" ? b.reminderTime : "17:30",
+    lastFeeling: typeof src.lastFeeling === "string" ? src.lastFeeling : null,
+    programStart: isoOrNull(src.programStart),
+    continuedFrom: typeof src.continuedFrom === "string" && src.continuedFrom !== "" ? src.continuedFrom : null,
+    savedAt: finite(src.savedAt) ? src.savedAt : 0,
+    activeTimer: isObj(src.activeTimer) ? src.activeTimer : null,
+    // Older copies carry a ±5 minute adjustment. The plan says the app never changes a session's minutes, so it is
+    // accepted here (a saved copy must round-trip) and ignored everywhere else.
+    adjustmentMins: finite(src.adjustmentMins) ? src.adjustmentMins : 0,
+    stage: typeof src.stage === "string" && src.stage !== "" ? src.stage : typeof b.stage === "string" ? b.stage : "welcome",
+    lastActivityAt: finite(src.lastActivityAt) ? src.lastActivityAt : null,
+    comebackNudgeShown: !!src.comebackNudgeShown,
+    raceOfferShown: !!src.raceOfferShown,
+  };
+}
+
+// ---- Missed weeks ------------------------------------------------------------------------------------
+
+const weekOfKey = (key) => parseInt(String(key).split("-")[0], 10);
+
+/**
+ * How many whole weeks the programme should move forward so that this calendar week holds the next unlogged session.
+ * 0 unless today's week is more than one week past the last week with anything logged (the start week counts when
+ * nothing is logged yet), or the programme is complete. A rider back after a month away who logged week 3 last and
+ * is now in week 7 gets 3: weeks 4 to 6 were missed, and week 4 becomes this week.
+ */
+export function missedWeeks(programStart, sessionLog, weeks, today = new Date()) {
+  const log = isObj(sessionLog) ? sessionLog : {};
+  const thisWeek = weekNumberForDate(programStart, today);
+  const loggedWeeks = Object.keys(log).map(weekOfKey).filter(Number.isFinite);
+  const lastLogged = loggedWeeks.length ? Math.max(...loggedWeeks) : 1;
+  if (thisWeek - lastLogged <= 1) return 0;
+  let nextUnlogged = null;
+  for (const w of weeks || []) {
+    if ((w.sessions || []).some((_, i) => !(`${w.n}-${i}` in log))) { nextUnlogged = w.n; break; }
+  }
+  if (nextUnlogged === null) return 0;
+  return Math.max(0, thisWeek - nextUnlogged);
+}
+
+/** The programme start moved forward by whole weeks (the session keys and the log are untouched). */
+export function shiftProgrammeStart(programStart, weeksForward) {
+  const d = new Date(programStart);
+  d.setDate(d.getDate() + 7 * Math.max(0, Math.round(weeksForward) || 0));
+  return d;
+}
+
+/** A copy that says it is on the dashboard but has no programme to show: the app must start blank and keep the raw text aside. */
+export function needsBlankFallback(safe) {
+  return !!safe && safe.weeks === null && safe.stage === "dashboard";
+}
+
+/** A 6-character base36 rider id. */
+export function newRiderId(random = Math.random) {
+  let id = "";
+  while (id.length < 6) id += Math.floor(Math.min(Math.max(random(), 0), 0.999999) * 36).toString(36);
+  return id;
+}
+
+/** True when two rider names are both given and are not the same name (case and surrounding spaces ignored). */
+export function namesDiffer(a, b) {
+  const x = (typeof a === "string" ? a : "").trim().toLowerCase();
+  const y = (typeof b === "string" ? b : "").trim().toLowerCase();
+  return x !== "" && y !== "" && x !== y;
+}
+
+const LEGACY_ID = "main";
+
+/**
+ * The rider index as stored on this device: { active, riders: [{ id, name, lastSavedAt? }], removed: [{ id, at, pendingDelete? }] }.
+ * Anything malformed gives null so the caller can start a fresh one.
+ */
+export function normaliseRiderIndex(parsed) {
+  if (!isObj(parsed) || !Array.isArray(parsed.riders)) return null;
+  const riders = parsed.riders
+    .filter((r) => isObj(r) && typeof r.id === "string" && r.id !== "")
+    .map((r) => {
+      const out = { id: r.id, name: typeof r.name === "string" ? r.name.slice(0, 40) : "" };
+      if (finite(r.lastSavedAt)) out.lastSavedAt = r.lastSavedAt;
+      return out;
+    });
+  if (riders.length === 0 || !riders.some((r) => r.id === parsed.active)) return null;
+  const removed = Array.isArray(parsed.removed)
+    ? parsed.removed.filter((r) => isObj(r) && typeof r.id === "string" && r.id !== "").map((r) => ({ id: r.id, at: finite(r.at) ? r.at : 0, ...(r.pendingDelete ? { pendingDelete: true } : {}) }))
+    : [];
+  return { active: parsed.active, riders, removed };
+}
+
+/**
+ * The index for a device with no index yet: a device that already holds progress under the original key keeps the
+ * "main" id for it, a fresh device gets a random id for its first rider.
+ */
+export function freshRiderIndex(hasLegacyData, mintId = newRiderId) {
+  const id = hasLegacyData ? LEGACY_ID : mintId();
+  return { active: id, riders: [{ id, name: "" }], removed: [] };
+}
+
+/**
+ * Whether this device's "main" copy and the account's "main" copy are two different people. Only when the device's
+ * active rider is "main" and both sides have a name that is not the same: then the device copy is given its own id
+ * and pushed as a new rider rather than reconciled against a stranger's programme.
+ */
+export function shouldSplitMain(index, localName, serverName) {
+  return !!index && index.active === LEGACY_ID && namesDiffer(localName, serverName);
+}
+
+/** The index with the "main" rider renamed to `newId` (active follows it). */
+export function renameRider(index, fromId, newId) {
+  return {
+    ...index,
+    active: index.active === fromId ? newId : index.active,
+    riders: index.riders.map((r) => (r.id === fromId ? { ...r, id: newId } : r)),
+  };
+}
+
+export function isRemovedRider(index, id) {
+  return !!index && Array.isArray(index.removed) && index.removed.some((r) => r.id === id);
+}
+
+/** Adds `id` to the index's removed list (and drops it from riders if still there). pendingDelete marks a DELETE the account has not confirmed. */
+export function markRemoved(index, id, now = Date.now(), pendingDelete = false) {
+  const removed = (index.removed || []).filter((r) => r.id !== id);
+  removed.push({ id, at: now, ...(pendingDelete ? { pendingDelete: true } : {}) });
+  return { ...index, riders: index.riders.filter((r) => r.id !== id), removed };
+}
+
+/** The account confirmed these ids are gone: nothing left to retry for them. */
+export function confirmRemoved(index, ids) {
+  const set = new Set(ids);
+  return { ...index, removed: (index.removed || []).map((r) => (set.has(r.id) && r.pendingDelete ? { id: r.id, at: r.at } : r)) };
+}
+
+/**
+ * Riders the account says were removed elsewhere: dropped from this device's index and remembered as removed. If the
+ * active rider goes, the first remaining rider takes over; if none remain, a fresh blank rider is minted.
+ */
+export function dropRiders(index, ids, now = Date.now(), mintId = newRiderId) {
+  const gone = new Set((ids || []).filter((id) => index.riders.some((r) => r.id === id)));
+  if (gone.size === 0) return { index, dropped: [], activeChanged: false };
+  const dropped = index.riders.filter((r) => gone.has(r.id));
+  let riders = index.riders.filter((r) => !gone.has(r.id));
+  if (riders.length === 0) riders = [{ id: mintId(), name: "" }];
+  const active = gone.has(index.active) ? riders[0].id : index.active;
+  const removed = [...(index.removed || []).filter((r) => !gone.has(r.id)), ...dropped.map((r) => ({ id: r.id, at: now }))];
+  return { index: { ...index, active, riders, removed }, dropped, activeChanged: active !== index.active };
+}
+
+/** The index with one rider's server-confirmed save time. */
+export function withLastSaved(index, id, at) {
+  return { ...index, riders: index.riders.map((r) => (r.id === id ? { ...r, lastSavedAt: at } : r)) };
+}
+
+const RETRY_DELAYS = [10000, 30000, 120000, 600000];
+
+/** How long to wait before the next push attempt: 10 s, 30 s, 2 min, then 10 min every time. */
+export function retryDelay(attempt) {
+  return RETRY_DELAYS[Math.min(Math.max(attempt, 0), RETRY_DELAYS.length - 1)];
+}
+
+function sameMap(a, b) {
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  return ka.length === kb.length && ka.every((k) => k in b && a[k] === b[k]);
+}
+
+/**
+ * The account's merged copy folded into this device's copy of the same programme, by the account's own rules: the
+ * logs and durations are a union by key with the newer copy winning a key both have (this device on a tie), badges
+ * are a union, off-plan rides a union by their time. Nothing else is touched. `changed` says whether anything differs
+ * from the local copy, so the app can skip a state update that would only re-save the same thing.
+ *
+ * A session cleared on one device ("Clear this", or a skip undone) is remembered in clearedLog as { key: when }. When
+ * a key is in only one copy, and the other copy cleared it at or after the first copy's savedAt, the key stays
+ * cleared: without this the account merge brought a cleared ride straight back. clearedLog itself merges by the
+ * latest time per key. (The website server applies the same rule.)
+ */
+export function mergeLogs(local, remote) {
+  const l = isObj(local) ? local : {};
+  const r = isObj(remote) ? remote : {};
+  const lSaved = l.savedAt || 0;
+  const rSaved = r.savedAt || 0;
+  const localWins = lSaved >= rSaved;
+  const lLog = cleanLogMap(l.sessionLog);
+  const lDur = cleanLogMap(l.sessionDurations);
+  const rLog = cleanLogMap(r.sessionLog);
+  const rDur = cleanLogMap(r.sessionDurations);
+  const lCleared = cleanClearedMap(l.clearedLog);
+  const rCleared = cleanClearedMap(r.clearedLog);
+  const clearedLog = { ...lCleared };
+  for (const [k, at] of Object.entries(rCleared)) if (!(k in clearedLog) || at > clearedLog[k]) clearedLog[k] = at;
+  // A key only this side has, cleared on the other side since this side's copy was saved: it stays cleared.
+  const keepLocal = (k) => k in rLog || !(k in rCleared) || rCleared[k] < lSaved;
+  const keepRemote = (k) => k in lLog || !(k in lCleared) || lCleared[k] < rSaved;
+  const pick = (map, keep) => Object.fromEntries(Object.entries(map).filter(([k]) => keep(k)));
+  const lLogKept = pick(lLog, keepLocal);
+  const rLogKept = pick(rLog, keepRemote);
+  const lDurKept = pick(lDur, keepLocal);
+  const rDurKept = pick(rDur, keepRemote);
+  const sessionLog = localWins ? { ...rLogKept, ...lLogKept } : { ...lLogKept, ...rLogKept };
+  const sessionDurations = localWins ? { ...rDurKept, ...lDurKept } : { ...lDurKept, ...rDurKept };
+  const lBadges = Array.isArray(l.badges) ? l.badges : [];
+  const badges = [...lBadges, ...(Array.isArray(r.badges) ? r.badges : []).filter((b) => typeof b === "string" && !lBadges.includes(b))];
+  const lAdHoc = Array.isArray(l.adHocLog) ? l.adHocLog : [];
+  const seen = new Set(lAdHoc.map((x) => x && x.at));
+  const adHocLog = [...lAdHoc, ...cleanAdHoc(r.adHocLog).filter((x) => !seen.has(x.at))];
+  const changed = !sameMap(sessionLog, lLog) || !sameMap(sessionDurations, lDur) || !sameMap(clearedLog, lCleared) || badges.length !== lBadges.length || adHocLog.length !== lAdHoc.length;
+  return { sessionLog, sessionDurations, clearedLog, badges, adHocLog, changed };
+}
+
+// "at 14:02" today, "on Tue 13 Oct at 09:30" otherwise; bare = true drops the leading "at"/"on" (for "since 14:02").
+function clockWords(at, now, bare = false) {
+  const d = new Date(at);
+  const n = new Date(now);
+  const hm = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === n.toDateString()) return bare ? hm : `at ${hm}`;
+  const day = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  return bare ? `${day} at ${hm}` : `on ${day} at ${hm}`;
+}
+
+/**
+ * The one honest line on the account card. `state` is { status, at, lastSavedAt }: status is "saved" (last push
+ * succeeded at `at`), "pending" or "offline" (something is waiting to go up; lastSavedAt is the last time the account
+ * confirmed a save), "signedOut", "removed", or "connecting" before the first answer from the account.
+ */
+export function syncStatusLine(state, now = Date.now()) {
+  const s = isObj(state) ? state : {};
+  const last = finite(s.lastSavedAt) ? s.lastSavedAt : 0;
+  switch (s.status) {
+    case "signedOut":
+      return { tone: "warn", signIn: true, text: "You've been signed out. Sign in again to keep saving." };
+    case "removed":
+      return { tone: "warn", text: "This rider was removed on another device." };
+    case "pending":
+    case "offline":
+      return { tone: "warn", text: last ? `Not saved to your account since ${clockWords(last, now, true)}. Check your connection.` : "Not saved to your account yet. Check your connection." };
+    case "saved": {
+      const at = finite(s.at) ? s.at : last;
+      const ago = now - at;
+      if (ago < 60000) return { tone: "ok", text: "Saved to your account just now." };
+      if (ago < 3600000) return { tone: "ok", text: `Saved to your account ${Math.max(1, Math.round(ago / 60000))} min ago.` };
+      return { tone: "ok", text: `Saved to your account ${clockWords(at, now)}.` };
+    }
+    default:
+      return { tone: "muted", text: "Connecting to your account." };
+  }
+}
+
+export const DAY_NAMES = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday", Sun: "Sunday" };
+
+/** The heading when a logged session is being changed: "Changing Tuesday's Ride A". */
+export function changingLabel(session) {
+  const day = session && DAY_NAMES[session.day];
+  const what = roleLabel(session) || (session && session.name) || "this session";
+  return `Changing ${day ? `${day}'s ` : ""}${what}`;
+}
+
+/** "Tuesday's Ride A" for a session, used when listing what was just logged. */
+export function sessionWords(session) {
+  const day = session && DAY_NAMES[session.day];
+  const what = roleLabel(session) || (session && session.name) || "session";
+  return `${day ? `${day}'s ` : ""}${what}`;
+}
+
+/** The logged sessions most recently written, newest first (object key order is insertion order), at most `limit`. */
+export function recentlyLogged(allSessions, sessionLog, limit = 2) {
+  const keys = Object.keys(sessionLog || {}).reverse();
+  const out = [];
+  for (const k of keys) {
+    const s = allSessions.find((x) => x.key === k);
+    if (s) out.push(s);
+    if (out.length >= limit) break;
+  }
+  return out;
+}

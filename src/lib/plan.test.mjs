@@ -69,3 +69,29 @@ test("sync: a deliberate carry-on with an empty log is not a stray new plan", ()
   assert.deepEqual(decideSync(carryOnRidden, { ...finished, savedAt: 9000 }), { action: "useAccount", keepBackup: true });
   assert.deepEqual(decideSync(carryOnRidden, finished), { action: "saveToAccount" });
 });
+
+test("missed weeks: how far to move the programme so this week holds the next unlogged session", async () => {
+  const { missedWeeks, shiftProgrammeStart } = await import("./plan.js");
+  const start = new Date(2026, 8, 7, 9, 0); // Mon 7 Sep 2026
+  const weeks = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ n, sessions: [{ day: "Tue" }, { day: "Thu" }, { day: "Sat" }] }));
+  const week = (n) => new Date(2026, 8, 7 + 7 * (n - 1) + 2); // the Wednesday of week n
+  const logged3 = { "1-0": "x", "1-1": "x", "1-2": "x", "2-0": "x", "2-1": "x", "2-2": "x", "3-0": "x", "3-1": "x", "3-2": "x" };
+  assert.equal(missedWeeks(start, logged3, weeks, week(3)), 0, "still in the last logged week");
+  assert.equal(missedWeeks(start, logged3, weeks, week(4)), 0, "the next week is not a missed week");
+  assert.equal(missedWeeks(start, logged3, weeks, week(5)), 1, "week 4 was missed");
+  assert.equal(missedWeeks(start, logged3, weeks, week(7)), 3, "weeks 4 to 6 were missed");
+  const partial = { ...logged3, "3-2": undefined };
+  delete partial["3-2"];
+  assert.equal(missedWeeks(start, partial, weeks, week(6)), 3, "the next unlogged session is still in week 3, so week 3 becomes this week");
+  assert.equal(missedWeeks(start, {}, weeks, week(2)), 0, "nothing logged, week 2: the start week counts as activity");
+  assert.equal(missedWeeks(start, {}, weeks, week(3)), 2, "nothing logged, week 3: week 1 becomes this week");
+  const all = {};
+  weeks.forEach((w) => w.sessions.forEach((_, i) => { all[`${w.n}-${i}`] = "x"; }));
+  assert.equal(missedWeeks(start, all, weeks, week(12)), 0, "a finished programme has nothing to move");
+  const shifted = shiftProgrammeStart(start, 3);
+  assert.equal(shifted.getDate(), 28);
+  assert.equal(shifted.getHours(), 9, "time of day kept");
+  assert.equal(weekNumberForDate(shifted, week(7)), 4, "after the shift, this week is week 4");
+  assert.equal(sessionDate(shifted, 4, "Tue").getDate(), week(7).getDate() - 1);
+  assert.equal(shiftProgrammeStart(start, 0).getTime(), start.getTime());
+});
