@@ -488,6 +488,7 @@ export const isJuniorSession = (session) => !!session && typeof session.role ===
 
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const finite = (v) => typeof v === "number" && Number.isFinite(v);
+const nonEmpty = (v) => typeof v === "string" && v !== "";
 const isoOrNull = (v) => (typeof v === "string" && v !== "" && !Number.isNaN(Date.parse(v)) ? v : null);
 
 function cleanProfile(raw, blank) {
@@ -500,7 +501,34 @@ function cleanProfile(raw, blank) {
   out.raceReady = !!p.raceReady;
   out.sessionsPerWeek = finite(p.sessionsPerWeek) ? p.sessionsPerWeek : finite(base.sessionsPerWeek) ? base.sessionsPerWeek : 3;
   out.delayWeeks = finite(p.delayWeeks) ? p.delayWeeks : 0;
+  // The rider on the MTB east account this programme belongs to (a uuid), or null when it is not linked to one.
+  out.riderProfileId = nonEmpty(p.riderProfileId) ? p.riderProfileId : null;
   return out;
+}
+
+// ---- Riders on the MTB east account ---------------------------------------------------------------------
+// GET /api/programme/me lists the account's riders: [{ id (uuid), firstName, ageBand: "under14"|"14plus", junior }].
+
+/**
+ * The account's riders as choices for "who is this programme for?": each with `linkedTo`, the id of the rider on
+ * this device already set up for them (null when free). Malformed entries are dropped. `localRiders` is the device's
+ * rider index entries, [{ id, riderProfileId? }].
+ */
+export function riderChoices(accountRiders, localRiders) {
+  const locals = Array.isArray(localRiders) ? localRiders.filter((r) => isObj(r) && nonEmpty(r.id)) : [];
+  return (Array.isArray(accountRiders) ? accountRiders : [])
+    .filter((r) => isObj(r) && nonEmpty(r.id) && nonEmpty(r.firstName))
+    .map((r) => {
+      const linked = locals.find((l) => l.riderProfileId === r.id);
+      return { ...profileFromAccountRider(r), firstName: r.firstName, id: r.id, linkedTo: linked ? linked.id : null };
+    });
+}
+
+/** The profile fields an account rider fills in for us: their name, the link to them, and the age band (so the age step is skipped). */
+export function profileFromAccountRider(r) {
+  const ageBand = r && r.ageBand === "under14" ? "under14" : "14plus";
+  const junior = r && typeof r.junior === "boolean" ? r.junior : ageBand === "under14";
+  return { name: String((r && r.firstName) || "").slice(0, 40), riderProfileId: r && nonEmpty(r.id) ? r.id : null, ageBand, junior };
 }
 
 function cleanLogMap(raw) {
@@ -624,7 +652,7 @@ export function namesDiffer(a, b) {
 const LEGACY_ID = "main";
 
 /**
- * The rider index as stored on this device: { active, riders: [{ id, name, lastSavedAt? }], removed: [{ id, at, pendingDelete? }] }.
+ * The rider index as stored on this device: { active, riders: [{ id, name, lastSavedAt?, riderProfileId? }], removed: [{ id, at, pendingDelete? }] }.
  * Anything malformed gives null so the caller can start a fresh one.
  */
 export function normaliseRiderIndex(parsed) {
@@ -634,6 +662,7 @@ export function normaliseRiderIndex(parsed) {
     .map((r) => {
       const out = { id: r.id, name: typeof r.name === "string" ? r.name.slice(0, 40) : "" };
       if (finite(r.lastSavedAt)) out.lastSavedAt = r.lastSavedAt;
+      if (nonEmpty(r.riderProfileId)) out.riderProfileId = r.riderProfileId; // the account rider they are set up for
       return out;
     });
   if (riders.length === 0 || !riders.some((r) => r.id === parsed.active)) return null;

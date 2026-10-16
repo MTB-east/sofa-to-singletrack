@@ -1,5 +1,5 @@
 {
-  "_notice": "Drafted for MTB East in the structure of the coach content form (Sections A to D), in the voice set out under 'voice'. The MTB east crew has not yet reviewed these: they should read them and change anything that isn't how they would say it.",
+  "_notice": "Coach notes in the structure of the coach content form (Sections A to D), in the voice set out under 'voice'. Reviewed and approved by the MTB east crew on 16 October 2026 (docs/Sofa-to-Singletrack-Coach-Notes-FOR-REVIEW-2026-10-16.pdf). Change the words only with the crew's say-so.",
   "welcome": "Welcome aboard, {name}. Your first session, {sessionName}, is a gentle one on purpose. No pressure, just get a feel for the bike.",
   "checkins": {
     "early": {
@@ -34,7 +34,7 @@
     "raceMorning": "Nerves before a first race are completely normal, even for people who've raced for years. Remember the goal today is finishing your own race, at your own pace. Enjoy it."
   },
   "junior": {
-    "_notice": "Sofa to Singletrack Juniors: every line here is written to the grown-up riding with the child, not to the child. These were not part of the signed-off coaching plans document; they are drafted for the MTB east crew to review and change before they are treated as final.",
+    "_notice": "Sofa to Singletrack Juniors: every line here is written to the grown-up riding with the child, not to the child. Reviewed and approved by the MTB east crew on 16 October 2026 together with the adult notes.",
     "welcome": "Welcome, {name}'s grown-up. The first game, {sessionName}, is short on purpose: fifteen minutes, somewhere flat, and you count out loud. Helmet on before the bike moves, and stay within sight the whole time. When it is done, tick it here and {name} collects the first badge.",
     "checkins": {
       "_notice": "The grown-up answers for the child after each game. Nothing medical, nothing about pushing harder.",

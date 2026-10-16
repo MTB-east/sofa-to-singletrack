@@ -7,8 +7,10 @@ import {
   planForRace, weeksUntil, weeksFromSaved, reassignDays, roleLabel, isJuniorSession,
   normaliseSaved, needsBlankFallback, newRiderId, normaliseRiderIndex, freshRiderIndex, shouldSplitMain, renameRider,
   isRemovedRider, markRemoved, confirmRemoved, dropRiders, withLastSaved, retryDelay, mergeLogs, syncStatusLine,
-  changingLabel, sessionWords, recentlyLogged, DAY_NAMES, missedWeeks, shiftProgrammeStart,
+  changingLabel, sessionWords, recentlyLogged, DAY_NAMES, missedWeeks, shiftProgrammeStart, riderChoices, profileFromAccountRider,
 } from "./lib/plan.js";
+import { programmeIcs } from "./lib/ics.js";
+import { printRows, planLabel } from "./lib/print.js";
 import { FALLBACK_SITE_NAV, loadSiteNav, currentHref, renderSiteNav, updateSiteNavAccount, wireSiteNav } from "./lib/siteNav.js";
 import "../games/site-nav.css";
 
@@ -400,6 +402,19 @@ function toICSDate(date) {
   return date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 }
 
+// Hands the browser a file to save (a backup, a calendar file): a Blob behind a one-off link.
+function downloadTextFile(text, filename, type) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // sessionDate lives in src/lib/plan.js (tested): week 1 is the real calendar week the programme started in.
 
 function downloadSessionICS(session, weekNum, weekTitle, programStart) {
@@ -413,15 +428,7 @@ function downloadSessionICS(session, weekNum, weekTitle, programStart) {
     `DESCRIPTION:${(session.detail || session.child || "").replace(/,/g, "\\,")}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
-  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `sofa-to-singletrack-week${weekNum}-${session.day.toLowerCase()}.ics`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadTextFile(ics, `sofa-to-singletrack-week${weekNum}-${session.day.toLowerCase()}.ics`, "text/calendar;charset=utf-8");
 }
 
 function TopoBackground() {
@@ -550,14 +557,40 @@ function RiderSwitcher({ index, onSwitch }) {
   );
 }
 
-function FamilyPanel({ index, onSwitch, onAdd, onRemove, bordered = true }) {
+// The riders on the MTB east account (from /api/programme/me), one button each: "Set up Ollie". One already set up on
+// this device (isTaken) is greyed out. `children` goes under the list: the "Someone else" button.
+function AccountRiderPicker({ choices, isTaken, onPick, children }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Riders on your MTB east account</div>
+      {choices.map((r) => {
+        const taken = isTaken(r);
+        return (
+          <button key={r.id} onClick={() => onPick(r)} disabled={taken} style={{ ...choiceBtn, ...(taken ? { color: "#868A85", cursor: "default" } : {}) }}>
+            {taken ? `${r.firstName}: already set up` : `Set up ${r.firstName}`}
+          </button>
+        );
+      })}
+      {children}
+    </div>
+  );
+}
+
+function FamilyPanel({ index, onSwitch, onAdd, onRemove, accountChoices = [], onAddFromAccount, bordered = true }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [someoneElse, setSomeoneElse] = useState(false);
+  const showNameBox = accountChoices.length === 0 || someoneElse;
   const submit = () => {
     const err = onAdd(name);
     if (err) setError(err);
-    else { setName(""); setError(""); setOpen(false); }
+    else { setName(""); setError(""); setOpen(false); setSomeoneElse(false); }
+  };
+  const addFromAccount = (r) => {
+    const err = onAddFromAccount(r);
+    if (err) setError(err);
+    else { setName(""); setError(""); setOpen(false); setSomeoneElse(false); }
   };
   const btn = { minHeight: 44, padding: "8px 14px", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer", background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8" };
   return (
@@ -586,12 +619,21 @@ function FamilyPanel({ index, onSwitch, onAdd, onRemove, bordered = true }) {
         <button onClick={() => setOpen(true)} style={btn}>＋ Add a rider</button>
       ) : (
         <div>
-          <label htmlFor="family-name" style={{ display: "block", fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Their first name</label>
-          <input id="family-name" value={name} onChange={(e) => { setName(e.target.value); setError(""); }} maxLength={40} style={{ width: "100%", boxSizing: "border-box", minHeight: 44, padding: "8px 12px", fontSize: 16, borderRadius: 8, border: "1px solid #2b2b2b", background: "#0d0d0d", color: "#F4F3EF", marginBottom: 8 }} />
+          {accountChoices.length > 0 && (
+            <AccountRiderPicker choices={accountChoices} isTaken={(r) => !!r.linkedTo} onPick={addFromAccount}>
+              {!someoneElse && <button onClick={() => setSomeoneElse(true)} style={{ ...choiceBtn, borderStyle: "dashed", color: "#B9BDB8" }}>Someone else</button>}
+            </AccountRiderPicker>
+          )}
+          {showNameBox && (
+            <>
+              <label htmlFor="family-name" style={{ display: "block", fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Their first name</label>
+              <input id="family-name" value={name} onChange={(e) => { setName(e.target.value); setError(""); }} maxLength={40} style={{ width: "100%", boxSizing: "border-box", minHeight: 44, padding: "8px 12px", fontSize: 16, borderRadius: 8, border: "1px solid #2b2b2b", background: "#0d0d0d", color: "#F4F3EF", marginBottom: 8 }} />
+            </>
+          )}
           {error && <p role="alert" style={{ color: "#E24B4A", fontSize: 15, margin: "0 0 8px" }}>{error}</p>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={submit} style={{ ...btn, background: "#0F5F59", border: "1px solid #0F5F59", color: "#ffffff" }}>Add and set up their plan</button>
-            <button onClick={() => { setOpen(false); setError(""); }} style={btn}>Cancel</button>
+            {showNameBox && <button onClick={submit} style={{ ...btn, background: "#0F5F59", border: "1px solid #0F5F59", color: "#ffffff" }}>Add and set up their plan</button>}
+            <button onClick={() => { setOpen(false); setError(""); setSomeoneElse(false); }} style={btn}>Cancel</button>
           </div>
           <p style={{ fontSize: 13, color: "#868A85", margin: "10px 0 0", lineHeight: 1.4 }}>For a child under 16, please set up and log their rides yourself, and ride with them where needed.</p>
         </div>
@@ -946,8 +988,73 @@ function TipsAndAdvice() {
   );
 }
 
-// One fold for everything a rider sets up once: text size, training days, the family riders, and backups.
-function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, storageKey, onRestoreBackup, textSize, onTextSize, family }) {
+// The whole programme on paper: name, plan and start date, then one table per week. Black on white, A4 portrait; the
+// @media print rules in the app's <style> hide the site header and the two buttons. printRows (src/lib/print.js) decides
+// what goes in each row; on a narrow screen each row stacks into a card so nothing scrolls sideways.
+function PrintView({ profile, weeks, programStart, junior, onBack }) {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+  const tables = printRows(weeks, programStart, junior);
+  const started = programStart.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const cols = junior
+    ? [["day", "Day"], ["dateText", "Date"], ["name", "Game"], ["mins", "Minutes"], ["where", "Where"], ["child", "What the child does"], ["grownUp", "What the grown-up does"], ["badge", "Badge"]]
+    : [["day", "Day"], ["dateText", "Date"], ["name", "Session"], ["mins", "Minutes"], ["effort", "Effort"], ["doneWhen", "Done when"]];
+  const cell = (row, key) => {
+    if (key === "effort") return row.effortNote && row.effortNote !== row.effort ? `${row.effort} (${row.effortNote})` : row.effort;
+    if (key === "doneWhen") return row.doneWhen.length > 1 ? <ul style={{ margin: 0, paddingLeft: 16 }}>{row.doneWhen.map((d, i) => <li key={i}>{d}</li>)}</ul> : row.doneWhen[0] || "";
+    return row[key];
+  };
+  const btn = { minHeight: 44, padding: "8px 18px", borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: "pointer", border: "1px solid #14171A", background: "#14171A", color: "#ffffff" };
+  return (
+    <div className="print-view" style={{ background: "#ffffff", color: "#000000", minHeight: "100vh", padding: "24px 16px 48px", fontFamily: "'Source Sans 3', sans-serif" }}>
+      <style>{`
+        .print-view table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 0 0 18px; }
+        .print-view th, .print-view td { border: 1px solid #000; padding: 4px 6px; text-align: left; vertical-align: top; }
+        .print-view th { background: #eee; font-weight: 700; }
+        .print-view h2 { font-family: 'Oswald', sans-serif; font-size: 18px; margin: 18px 0 2px; page-break-after: avoid; }
+        .print-view tr { page-break-inside: avoid; }
+        @media screen and (max-width: 600px) {
+          .print-view thead { display: none; }
+          .print-view table, .print-view tbody, .print-view tr, .print-view td { display: block; width: 100%; box-sizing: border-box; }
+          .print-view tr { border: 1px solid #000; margin-bottom: 8px; }
+          .print-view td { border: none; border-bottom: 1px solid #ddd; padding: 6px 8px; }
+          .print-view td:last-child { border-bottom: none; }
+          .print-view td::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #444; }
+        }
+      `}</style>
+      <div style={{ maxWidth: 780, margin: "0 auto" }}>
+        <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          <button onClick={() => window.print()} style={btn}>Print</button>
+          <button onClick={onBack} style={{ ...btn, background: "#ffffff", color: "#14171A" }}>Back</button>
+        </div>
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: "0.08em", color: "#444" }}>AN MTB EAST PROGRAMME</div>
+        <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 28, margin: "0 0 6px" }}>Sofa to Singletrack{profile.name ? `: ${profile.name}` : ""}</h1>
+        <p style={{ margin: "0 0 4px", fontSize: 14 }}><strong>{planLabel(profile, weeks)}</strong>, {profile.sessionsPerWeek} sessions a week on {profile.chosenDays.join(", ")}.</p>
+        <p style={{ margin: "0 0 8px", fontSize: 14 }}>Started {started}.</p>
+        <p style={{ margin: "0 0 6px", fontSize: 12, color: "#444" }}>
+          {junior ? "Every session is a game, with a grown-up alongside the whole time. Helmet on before the bike moves." : `Effort is the talk test. ${EFFORT_WORDS.low.word}: ${EFFORT_WORDS.low.feels} ${EFFORT_WORDS.med.word}: ${EFFORT_WORDS.med.feels} ${EFFORT_WORDS.high.word}: ${EFFORT_WORDS.high.feels}`}
+        </p>
+        {tables.map((t) => (
+          <div key={t.n}>
+            <h2>Week {t.n} of {tables.length}{t.title ? `: ${t.title}` : ""}</h2>
+            {t.focus && <p style={{ margin: "0 0 6px", fontSize: 12, color: "#444" }}>{t.focus}</p>}
+            <table>
+              <thead><tr>{cols.map(([k, label]) => <th key={k}>{label}</th>)}</tr></thead>
+              <tbody>
+                {t.rows.map((row) => (
+                  <tr key={row.key}>{cols.map(([k, label]) => <td key={k} data-label={label}>{cell(row, k)}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+        <p style={{ fontSize: 11, color: "#444", margin: "12px 0 0" }}>Printed {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}. General guidance from the MTB east crew, not medical advice: check with your GP if unsure.</p>
+      </div>
+    </div>
+  );
+}
+
+// One fold for everything a rider sets up once: text size, training days, the plan on paper or in a calendar, the family riders, and backups.
+function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, storageKey, onRestoreBackup, textSize, onTextSize, family, onCalendarFile, onPrint, programmeComplete }) {
   const [expanded, setExpanded] = useState(false);
   const [editingDays, setEditingDays] = useState(false);
   const [draftDays, setDraftDays] = useState(profile.chosenDays);
@@ -965,15 +1072,7 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
   useEffect(readBackup, [storageKey, expanded]);
 
   const downloadJson = (text) => {
-    const blob = new Blob([text], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `sofa-to-singletrack-backup-${dateKey(new Date())}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadTextFile(text, `sofa-to-singletrack-backup-${dateKey(new Date())}.json`, "application/json");
     showToast("Backup downloaded.");
   };
 
@@ -1072,7 +1171,7 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
         <span style={{ color: "#E8792B", fontSize: 16 }} aria-hidden="true">{expanded ? "–" : "+"}</span>
       </button>
       {!expanded && (
-        <p style={{ margin: "10px 0 0", fontSize: 14, color: "#868A85", lineHeight: 1.4 }}>Text size, training days, family riders and backups</p>
+        <p style={{ margin: "10px 0 0", fontSize: 14, color: "#868A85", lineHeight: 1.4 }}>Text size, training days, calendar and print, family riders and backups</p>
       )}
       {expanded && (
         <div style={{ marginTop: 14 }}>
@@ -1106,6 +1205,17 @@ function SettingsSection({ profile, setProfile, weeks, setWeeks, showToast, stor
               </div>
             </>
           )}
+
+          <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
+
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#B9BDB8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Your plan</div>
+          <p style={{ margin: "0 0 10px", fontSize: 14, color: "#B9BDB8", lineHeight: 1.4 }}>
+            {programmeComplete ? "Every session is logged, so there is nothing left to put in your calendar. You can still print the plan." : "Put every session still to do in your phone's calendar as an all-day event, or print the whole plan to stick on the fridge."}
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {!programmeComplete && <button onClick={onCalendarFile} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Add all my sessions to my calendar (.ics)</button>}
+            <button onClick={onPrint} style={{ background: "none", border: "1px solid #2b2b2b", color: "#B9BDB8", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Print my plan</button>
+          </div>
 
           <div style={{ borderTop: "1px solid #2b2b2b", margin: "16px 0 14px" }} />
 
@@ -1565,7 +1675,8 @@ function loadRiderIndex() {
 // A complete, empty snapshot for a new rider, so switching to them clears every trace of the previous rider.
 // ageBand is "under14" (Sofa to Singletrack Juniors, with a grown-up) or "14plus" (the adult plans); junior follows it.
 // raceReady marks a 2- or 3-week Race ready block; delayWeeks holds a race plan's start back so it ends in race week.
-const BLANK_PROFILE = { name: "", ageBand: null, junior: false, experience: "none", planType: null, raceId: null, months: null, sessionsPerWeek: 3, chosenDays: ["Tue", "Thu", "Sat"], raceReady: false, delayWeeks: 0 };
+// riderProfileId links the programme to a rider on the MTB east account (a uuid from /api/programme/me), or null.
+const BLANK_PROFILE = { name: "", riderProfileId: null, ageBand: null, junior: false, experience: "none", planType: null, raceId: null, months: null, sessionsPerWeek: 3, chosenDays: ["Tue", "Thu", "Sat"], raceReady: false, delayWeeks: 0 };
 function blankSaved(name) {
   return {
     profile: { ...BLANK_PROFILE, name: name || "" },
@@ -1639,7 +1750,8 @@ export default function SofaToSingletrack() {
   const [raceWeek, setRaceWeek] = useState(null); // the next round this account has entered, from the website
   const [races, setRaces] = useState(FALLBACK_RACES); // the live calendar once fetched, else the fallback
   const [funPrice, setFunPrice] = useState(null); // { early, onTheDay } for the Fun category, from the website
-  const [account, setAccount] = useState(null); // null until we know; { signedIn, name } from the website
+  const [account, setAccount] = useState(null); // null until we know; { signedIn, name, riders } from the website
+  const [nameBoxOpen, setNameBoxOpen] = useState(false); // setup's name step: "Someone else" shows the text box under the account's riders
   const [syncReady, setSyncReady] = useState(false); // has this device been reconciled with the account's saved progress
   const [textSize, setTextSize] = useState(() => {
     try {
@@ -1751,7 +1863,7 @@ export default function SofaToSingletrack() {
     // A reload mid check-in lands back on the dashboard, never on the welcome screen: before this, leaving the stage
     // at its initial "welcome" meant the next save wrote that back, and the rider reopened the app to the intro page
     // as if their programme had gone.
-    if (saved.stage) setStage(saved.stage === "checkin" ? "dashboard" : saved.stage);
+    if (saved.stage) setStage(saved.stage === "checkin" || saved.stage === "print" ? "dashboard" : saved.stage);
     setLastActivityAt(typeof saved.lastActivityAt === "number" ? saved.lastActivityAt : null);
 
     // One-time "the bike misses you" nudge: never repeats once shown, so
@@ -1805,13 +1917,22 @@ export default function SofaToSingletrack() {
     writeItem(keyForRider(riderIndex.active), JSON.stringify(buildPayload()));
   }, [loaded, riderIndex.active, profile, weeks, planVersion, sessionLog, clearedLog, badges, adHocLog, notifAsked, notifEnabled, reminderTime, lastFeeling, programStart, sessionDurations, activeTimer, stage, lastActivityAt, comebackNudgeShown, raceOfferShown]);
 
-  // The rider's name on the switcher follows what they type in setup.
+  // The rider's name on the switcher follows what they type in setup, and the index remembers which account rider
+  // (if any) each programme is set up for, so Add a rider can grey out the ones already here.
   useEffect(() => {
-    if (!loaded || !profile.name) return;
+    if (!loaded) return;
     const cur = riderIndex.riders.find((r) => r.id === riderIndex.active);
-    if (cur && cur.name !== profile.name) persistIndex({ ...riderIndex, riders: riderIndex.riders.map((r) => (r.id === riderIndex.active ? { ...r, name: profile.name } : r)) });
+    if (!cur) return;
+    const name = profile.name || cur.name;
+    const linked = profile.riderProfileId || null;
+    if (cur.name === name && (cur.riderProfileId || null) === linked) return;
+    persistIndex({ ...riderIndex, riders: riderIndex.riders.map((r) => {
+      if (r.id !== riderIndex.active) return r;
+      const { riderProfileId: _dropped, ...rest } = r;
+      return { ...rest, name, ...(linked ? { riderProfileId: linked } : {}) };
+    }) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, profile.name, riderIndex.active]);
+  }, [loaded, profile.name, profile.riderProfileId, riderIndex.active]);
 
   // Ask the phone to keep the screen on while a ride timer is running. Not every phone or browser allows it, and it can be refused or
   // released (low battery, another app), so the app says plainly which it is rather than promising.
@@ -1886,26 +2007,29 @@ export default function SofaToSingletrack() {
     return () => { cancelled = true; };
   }, []);
 
-  // One sign-in with the main website: is this visitor signed in to their MTB east account?
+  // One sign-in with the main website: is this visitor signed in to their MTB east account, and who are its riders?
+  // { signedIn, firstName?, riders?: [{ id, firstName, ageBand, junior }] }; an older server sends `name` and no riders.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/programme/me", { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((json) => { if (!cancelled) setAccount(json && json.signedIn ? { signedIn: true, name: json.name || "" } : { signedIn: false, name: "" }); })
-      .catch(() => { if (!cancelled) setAccount({ signedIn: false, name: "" }); });
+      .then((json) => { if (!cancelled) setAccount(json && json.signedIn ? { signedIn: true, name: json.firstName || json.name || "", riders: Array.isArray(json.riders) ? json.riders : [] } : { signedIn: false, name: "", riders: [] }); })
+      .catch(() => { if (!cancelled) setAccount({ signedIn: false, name: "", riders: [] }); });
     return () => { cancelled = true; };
   }, []);
 
-  // Signed in and entered in a race? Show where and when, the forecast, and the timings.
+  // Signed in and entered in a race? Show where and when, the forecast, and the timings. A programme linked to one of
+  // the account's riders asks for that rider's next race, so a child's dashboard shows their race, not a parent's.
   useEffect(() => {
     if (!account || !account.signedIn) { setRaceWeek(null); return; }
     let cancelled = false;
-    fetch("/api/programme/race-week", { credentials: "same-origin" })
+    const forRider = profile.riderProfileId ? "?rider=" + encodeURIComponent(profile.riderProfileId) : "";
+    fetch("/api/programme/race-week" + forRider, { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => { if (!cancelled) setRaceWeek(json && json.entry ? json.entry : null); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [account]);
+  }, [account, profile.riderProfileId]);
 
   // Keeps a ref of the account so the sync machinery (which runs from window events) sees the latest answer.
   useEffect(() => { accountRef.current = account; }, [account]);
@@ -1914,7 +2038,7 @@ export default function SofaToSingletrack() {
 
   // The website said the session has gone: stop saving, say so on the account card, keep working from this device.
   const handleSignedOut = () => {
-    setAccount({ signedIn: false, name: "" });
+    setAccount({ signedIn: false, name: "", riders: [] });
     setSyncReady(false);
     setSyncState({ status: "signedOut", at: Date.now() });
   };
@@ -2110,7 +2234,8 @@ export default function SofaToSingletrack() {
         const server = normaliseSaved(r.data, blank);
         const isActive = r.riderId === index.active;
         if (!index.riders.some((x) => x.id === r.riderId)) {
-          index = { ...index, riders: [...index.riders, { id: r.riderId, name: r.name || (server && server.profile.name) || "" }] };
+          const linked = server && server.profile.riderProfileId;
+          index = { ...index, riders: [...index.riders, { id: r.riderId, name: r.name || (server && server.profile.name) || "", ...(linked ? { riderProfileId: linked } : {}) }] };
         }
         if (isActive && !initial) {
           // A re-check never moves the rider off their screen: logs only.
@@ -2347,16 +2472,25 @@ export default function SofaToSingletrack() {
   const stepName = stepList[Math.min(step, stepList.length - 1)];
   const goToStep = (name) => setStep(Math.max(0, stepList.indexOf(name)));
 
-  const chooseAge = (ageBand) => {
-    const isJunior = ageBand === "under14";
-    const p = { ...profile, ageBand, junior: isJunior, sessionsPerWeek: isJunior ? 2 : profile.sessionsPerWeek, chosenDays: isJunior ? ["Sat", "Sun"] : profile.chosenDays };
+  // Settles the age band on a profile and moves on to the step after age (index 2 in both step lists).
+  const settleAge = (base, ageBand, isJunior) => {
+    const p = { ...base, ageBand, junior: isJunior, sessionsPerWeek: isJunior ? 2 : base.sessionsPerWeek, chosenDays: isJunior ? ["Sat", "Sun"] : base.chosenDays };
     // A Junior has no race plan: clear anything an earlier adult pass through setup left behind, so no Race ready
     // block, delayed start or race-week note can follow the child onto the dashboard.
     if (isJunior) Object.assign(p, { planType: null, raceId: null, raceReady: false, raceReadyWeeks: null, delayWeeks: 0, months: null, continuation: null });
     setProfile(p);
     setWeeks(isJunior ? buildJuniorPlan({ chosenDays: p.chosenDays }) : defaultPlan());
-    setStep(step + 1);
+    setStep(2);
   };
+  const chooseAge = (ageBand) => settleAge(profile, ageBand, ageBand === "under14");
+
+  // "Set up Ollie" from the account's riders: the name, the link and the age band come from the account, so the age
+  // step is skipped. `base` is the profile to build on (the current one in setup, a blank one for a rider just added).
+  const startFromAccountRider = (base, r) => {
+    const patch = profileFromAccountRider(r);
+    settleAge({ ...base, ...patch }, patch.ageBand, patch.junior);
+  };
+  const accountChoices = account && account.signedIn ? riderChoices(account.riders, riderIndex.riders) : [];
 
   const chooseRace = (race) => {
     const choice = planForRace(weeksUntil(race.date));
@@ -2800,6 +2934,7 @@ export default function SofaToSingletrack() {
   const loadRider = (id, fallbackName) => {
     applyStored(keyForRider(id), readItem(keyForRider(id)), fallbackName || "");
     setStep(0);
+    setNameBoxOpen(false);
   };
   const switchRider = (id) => {
     if (id === riderIndex.active) return;
@@ -2808,19 +2943,24 @@ export default function SofaToSingletrack() {
     loadRider(id, target ? target.name : "");
     persistIndex({ ...riderIndex, active: id });
   };
-  const addRider = (name) => {
+  // A new rider on this device: by name, or one of the account's riders (accountRider), whose setup starts past the age step.
+  const addRider = (name, accountRider = null) => {
     const clean = (name || "").replace(/\s+/g, " ").trim().slice(0, 40);
     if (!clean) return "Please give their first name.";
     if (riderIndex.riders.length >= MAX_RIDERS) return "That's the most riders one account can hold.";
     flushCurrentRider();
     const id = newRiderId();
-    applySaved(blankSaved(clean));
+    const blank = blankSaved(clean);
+    applySaved(blank);
     setBikeCheckDone(false);
     setFitnessConfirmed(false);
     setStep(0);
-    persistIndex({ active: id, riders: [...riderIndex.riders, { id, name: clean }] });
+    setNameBoxOpen(false);
+    persistIndex({ active: id, riders: [...riderIndex.riders, { id, name: clean, ...(accountRider ? { riderProfileId: accountRider.id } : {}) }] });
+    if (accountRider) startFromAccountRider(blank.profile, accountRider);
     return null;
   };
+  const addAccountRider = (r) => (r.linkedTo ? `${r.firstName} is already set up on this device.` : addRider(r.firstName, r));
   const removeRider = (id) => {
     if (id === riderIndex.riders[0].id) return;
     const who = riderIndex.riders.find((r) => r.id === id);
@@ -2858,6 +2998,13 @@ export default function SofaToSingletrack() {
     try { localStorage.setItem(TEXT_SIZE_KEY, key); } catch (e) { /* storage unavailable */ }
   };
 
+  // Settings' "Add all my sessions to my calendar": one .ics with an all-day event per session still to do.
+  const downloadProgrammeIcs = () => {
+    const text = programmeIcs(weeks, programStart, sessionLog, riderIndex.active, new Date());
+    downloadTextFile(text, `sofa-to-singletrack-${(profile.name || "plan").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.ics`, "text/calendar;charset=utf-8");
+    showToast("Calendar file downloaded. Open it to add the sessions.");
+  };
+
   const selectedRace = races.find((r) => r.id === profile.raceId);
 
   // Missed weeks: today's week is more than one past the last week with anything logged. The card offers to move the
@@ -2881,7 +3028,7 @@ export default function SofaToSingletrack() {
   };
 
   return (
-    <div style={{ fontFamily: "'Source Sans 3', sans-serif", background: "#000000", color: "#F4F3EF", minHeight: "100vh", position: "relative" }}>
+    <div className="app-root" style={{ fontFamily: "'Source Sans 3', sans-serif", background: stage === "print" ? "#ffffff" : "#000000", color: "#F4F3EF", minHeight: "100vh", position: "relative" }}>
       <style>{`
         .display { font-family: 'Oswald', sans-serif; letter-spacing: 0.02em; font-weight: 600; }
         button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid #E8792B; outline-offset: 2px; }
@@ -2893,13 +3040,21 @@ export default function SofaToSingletrack() {
         @keyframes timerAlertPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
         .timer-alert { animation: timerAlertPulse 0.6s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+        @media print {
+          @page { size: A4 portrait; margin: 14mm; }
+          body, .app-root { background: #ffffff !important; color: #000000 !important; }
+          #mtbe-site-nav, .no-print, .app-root button { display: none !important; }
+          .print-view { padding: 0 !important; min-height: 0 !important; }
+        }
       `}</style>
       {showSplash && <SplashScreen />}
-      <TopoBackground />
+      {stage !== "print" && <TopoBackground />}
       <SiteNav account={account} />
       <div style={{ position: "relative", zIndex: 1, zoom: TEXT_SCALES[textSize] || 1 }}>
-        <AppHeader />
-        <RiderSwitcher index={riderIndex} onSwitch={switchRider} />
+        {stage !== "print" && <AppHeader />}
+        {stage !== "print" && <RiderSwitcher index={riderIndex} onSwitch={switchRider} />}
+
+        {stage === "print" && <PrintView profile={profile} weeks={weeks} programStart={programStart} junior={junior} onBack={backToDashboard} />}
 
         {showConfetti && !reduceMotion && <Confetti key={confettiKey} />}
 
@@ -2963,14 +3118,30 @@ export default function SofaToSingletrack() {
             <div style={{ fontSize: 14, color: "#B9BDB8", fontWeight: 600 }} aria-live="polite">Step {stepList.indexOf(stepName) + 1} of {stepList.length}</div>
           </div>
 
-          {stepName === "name" && (
-            <div>
-              <TextSizeControl value={textSize} onChange={changeTextSize} />
-              <label htmlFor="rider-name" style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>{riderIndex.active === riderIndex.riders[0].id ? "What should we call you?" : "What should we call them?"}</label>
-              <input id="rider-name" ref={nameRef} value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} placeholder="First name" style={inputStyle} />
-              <button onClick={() => setStep(1)} style={navBtn} disabled={!profile.name.trim()}>Next</button>
-            </div>
-          )}
+          {stepName === "name" && (() => {
+            // Signed in with riders on the account: pick one and the name and age step are done. "Someone else" shows
+            // the text box. A rider already set up on another programme on this device is greyed out.
+            // A name already typed (or the account holder's own, filled in for them) with no link keeps the box open.
+            const showNameBox = accountChoices.length === 0 || nameBoxOpen || (!!profile.name && !profile.riderProfileId);
+            return (
+              <div>
+                <TextSizeControl value={textSize} onChange={changeTextSize} />
+                {accountChoices.length > 0 && (
+                  <AccountRiderPicker choices={accountChoices} isTaken={(r) => !!r.linkedTo && r.linkedTo !== riderIndex.active} onPick={(r) => startFromAccountRider(profile, r)}>
+                    {!showNameBox && <button onClick={() => setNameBoxOpen(true)} style={{ ...choiceBtn, borderStyle: "dashed", color: "#B9BDB8" }}>Someone else</button>}
+                  </AccountRiderPicker>
+                )}
+                {showNameBox && (
+                  <>
+                    <label htmlFor="rider-name" style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>{riderIndex.active === riderIndex.riders[0].id ? "What should we call you?" : "What should we call them?"}</label>
+                    {/* Typing a name here means someone else: any link to an account rider picked earlier goes. */}
+                    <input id="rider-name" ref={nameRef} value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value, riderProfileId: null })} placeholder="First name" style={inputStyle} />
+                    <button onClick={() => setStep(1)} style={navBtn} disabled={!profile.name.trim()}>Next</button>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {stepName === "age" && (
             <div>
@@ -3390,7 +3561,8 @@ export default function SofaToSingletrack() {
           <SettingsSection
             storageKey={keyForRider(riderIndex.active)} profile={profile} setProfile={setProfile} weeks={weeks} setWeeks={setWeeks} showToast={showToast} onRestoreBackup={restoreBackup}
             textSize={textSize} onTextSize={changeTextSize}
-            family={<FamilyPanel index={riderIndex} onSwitch={switchRider} onAdd={addRider} onRemove={removeRider} bordered={false} />}
+            onCalendarFile={downloadProgrammeIcs} onPrint={() => setStage("print")} programmeComplete={programmeComplete}
+            family={<FamilyPanel index={riderIndex} onSwitch={switchRider} onAdd={addRider} onRemove={removeRider} accountChoices={accountChoices} onAddFromAccount={addAccountRider} bordered={false} />}
           />
 
           {programmeComplete && junior ? (
