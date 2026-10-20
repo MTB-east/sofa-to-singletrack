@@ -1,6 +1,6 @@
 # Sofa to Singletrack app
 
-MTB east's beginner programme app (Vite; main component `sofa-to-singletrack.jsx`, mini games in `games/`). A build is also served inside the MTB east website at `/programme/` — the steps for refreshing that copy are in the website project's CHANGELOG.md ("Sofa to Singletrack integration").
+MTB east's beginner programme app (Vite; main component `sofa-to-singletrack.jsx`, mini games in `games/`). A build is also served inside the MTB east website at `/programme/` — the steps for refreshing that copy are in the website project's docs/archive/CHANGELOG-before-2026-10-03.md ("Sofa to Singletrack integration").
 
 Coaching content: `docs/` holds the signed-off coaching plans (2026-10-15) and the coach notes for review (2026-10-16). Use the signed-off plans as the source of truth.
 
